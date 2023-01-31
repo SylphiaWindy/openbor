@@ -17,6 +17,9 @@
 #endif
 #include "joysticks.h"
 
+#ifdef __SWITCH__
+#include "control_switch.h"
+#else
 #ifdef OPENDINGUX
 	#define	CONTROL_ESC                 OPENDINGUX_BUTTON_SELECT
 	#define	CONTROL_DEFAULT1_START		OPENDINGUX_BUTTON_START
@@ -122,6 +125,9 @@
 #define CONTROL_DEFAULT4_START		((JOY_LIST_FIRST + 11) + (JOY_MAX_INPUTS * 3))
 #define CONTROL_DEFAULT4_SCREENSHOT ((JOY_LIST_FIRST + 12) + (JOY_MAX_INPUTS * 3))
 #define	CONTROL_DEFAULT4_ESC        ((JOY_LIST_FIRST + 15) + (JOY_MAX_INPUTS * 3))
+#endif // __SWITCH__
+
+#define	CONTROL_NONE				((JOY_LIST_FIRST + 1) + (JOY_MAX_INPUTS * 99)) //Kratus (20-04-21) value used to clear all keys
 
 #define JOYBUTTON(index, btn) (1 + i * JOY_MAX_INPUTS + btn)
 #define JOYAXIS(index, axis, dir) (JOYBUTTON(index, joysticks[index].NumButtons) + 2 * axis + dir)

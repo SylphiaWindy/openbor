@@ -22,6 +22,10 @@
 #include "jniutils.h"
 #endif
 
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
+
 SDL_Joystick *joystick[JOY_LIST_TOTAL];         // SDL struct for joysticks
 SDL_Haptic *joystick_haptic[JOY_LIST_TOTAL];   // SDL haptic for joysticks
 static int usejoy;						        // To be or Not to be used?
@@ -221,7 +225,7 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
 					}
 				}
 				break;
-
+#ifndef __SWITCH__
 			case SDL_JOYAXISMOTION:
 				for(i=0; i<JOY_LIST_TOTAL; i++)
 				{
@@ -241,7 +245,7 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
 					}
 				}
 				break;
-
+#endif
             // PLUG AND PLAY
             case SDL_JOYDEVICEADDED:
                 if (ev.jdevice.which < JOY_LIST_TOTAL)
@@ -267,7 +271,7 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
                         char buffer[MAX_BUFFER_LEN];
                         char joy_name[MAX_BUFFER_LEN];
                         get_now_string(buffer, MAX_BUFFER_LEN, TIMESTAMP_PATTERN);
-                        close_joystick(i);
+                        //close_joystick(i); //Kratus (20-04-21) disable the entire code to maintain joystick IDs
                         numjoy = SDL_NumJoysticks();
                         strcpy(joy_name,get_joystick_name(joysticks[i].Name));
                         printf("Joystick: \"%s\" disconnected from port: %d at %s\n",joy_name,i,buffer);
@@ -294,6 +298,19 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
 			// check buttons
 			for(j = 0; j < joysticks[i].NumButtons; j++)
             {
+#ifdef __SWITCH__
+                // we want "plus" or "minus" button to send start in single joycon mode
+                if(j == 10 || j == 11)
+                {
+                    joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j) << 10;
+                    continue;
+                }
+                // skip "plus and minus" combo key (?!)
+                else if(j == 34)
+                {
+                    continue;
+                }
+#endif
                 joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j) << j;
             }
 
@@ -357,44 +374,70 @@ types, defaults and keynames.
 */
 void joystick_scan(int scan)
 {
+	//Kratus (20-04-21) new joystick scan, avoid accelerometer detection as buttons in Android
 	int i;
+	int numjoyNoAcc = 0;
 
 	if(!scan) return;
 
 	numjoy = SDL_NumJoysticks();
+	numjoyNoAcc = numjoy;
 
 	if (scan != 2)
     {
-        if(numjoy <= 0)
+        for(i = 0; i < numjoy; i++)
+        {
+            char real_joy_name[MAX_BUFFER_LEN];
+
+            strcpy(real_joy_name,SDL_JoystickNameForIndex(i));
+            if (strcmp(real_joy_name, "Android Accelerometer") == 0)
+            {
+                --numjoyNoAcc;
+            }
+        }
+        if(numjoyNoAcc <= 0)
         {
             printf("No Joystick(s) Found!\n");
             return;
         }
         else
         {
-            printf("\n%d joystick(s) found!\n", numjoy);
+            printf("\n%d joystick(s) found!\n", numjoyNoAcc);
         }
     }
 
-	if (numjoy > JOY_LIST_TOTAL) numjoy = JOY_LIST_TOTAL; // avoid overflow bug
+	if (numjoyNoAcc > JOY_LIST_TOTAL) numjoy = JOY_LIST_TOTAL; // avoid overflow bug
 
 	for(i = 0; i < numjoy; i++)
 	{
-        open_joystick(i);
+	    int joy_idx = i;
+        char real_joy_name[MAX_BUFFER_LEN];
+
+        strcpy(real_joy_name,SDL_JoystickNameForIndex(i));
+
+        if (strcmp(real_joy_name, "Android Accelerometer") == 0)
+        {
+            continue;
+        }
+
+        open_joystick(joy_idx);
 
         if(scan != 2)
         {
-            // print JOY_MAX_INPUTS (32) spaces for alignment
+            int is_rumble_support = (joystick_haptic[i] != NULL && SDL_HapticRumbleSupported(joystick_haptic[i])) ? 1 : 0;
+            char* rumble_support = (is_rumble_support) ? "yes" : "no";
+
+            // print JOY_MAX_INPUTS (64) spaces for alignment
             if(numjoy == 1)
             {
-                printf("%s - %d axes, %d buttons, %d hat(s)\n",
-                                    get_joystick_name(joysticks[i].Name), joysticks[i].NumAxes, joysticks[i].NumButtons, joysticks[i].NumHats);
+                printf("%s (%s) - %d axes, %d buttons, %d hat(s), rumble support: %s\n",
+                        get_joystick_name(joysticks[joy_idx].Name), SDL_JoystickName(i), joysticks[joy_idx].NumAxes, joysticks[joy_idx].NumButtons, joysticks[joy_idx].NumHats, rumble_support);
             }
             else if(numjoy > 1)
             {
-                if(i) printf("\n");
-                printf("%d. %s - %d axes, %d buttons, %d hat(s)\n", i + 1,
-                        get_joystick_name(joysticks[i].Name), joysticks[i].NumAxes, joysticks[i].NumButtons, joysticks[i].NumHats);
+                if(joy_idx) printf("\n");
+                printf("%d. %s (%s) - %d axes, %d buttons, %d hat(s), rumble support: %s\n", i + 1,
+                        get_joystick_name(joysticks[joy_idx].Name), SDL_JoystickName(i), joysticks[joy_idx].NumAxes, joysticks[joy_idx].NumButtons, joysticks[joy_idx].NumHats, rumble_support);
             }
         }
 	}
@@ -501,6 +544,13 @@ void control_init(int joy_enable)
 	usejoy = joy_enable;
 #endif
 
+#ifdef __SWITCH__
+	if(savedata.single_joycon_mode)
+		SDL_SetHint("SDL_HINT_SINGLE_JOYCONS_MODE", "1");
+	else
+		SDL_SetHint("SDL_HINT_SINGLE_JOYCONS_MODE", "0");
+#endif
+
 	//memset(joysticks, 0, sizeof(s_joysticks) * JOY_LIST_TOTAL);
 	for(i = 0; i < JOY_LIST_TOTAL; i++)
 	{
@@ -523,8 +573,9 @@ void set_default_joystick_keynames(int i)
     int j;
     for(j = 0; j < JOY_MAX_INPUTS + 1; j++)
     {
-        if(j) strcpy(joysticks[i].KeyName[j], JoystickKeyName[j + i * JOY_MAX_INPUTS]);
-        else  strcpy(joysticks[i].KeyName[j], JoystickKeyName[j]);
+        if(j) strcpy(joysticks[i].KeyName[j], "DISCONNECTED"); //Kratus (20-04-21) rename all keys when disconnected
+		// if(j) strcpy(joysticks[i].KeyName[j], JoystickKeyName[j + i * JOY_MAX_INPUTS]);
+        // else  strcpy(joysticks[i].KeyName[j], JoystickKeyName[j]);
     }
 }
 
@@ -539,6 +590,9 @@ char *control_getkeyname(unsigned int keycode)
 
 	if(keycode > SDLK_FIRST && keycode < SDLK_LAST)
 		return JOY_GetKeyName(keycode);
+	else
+	if(keycode == CONTROL_NONE) //Kratus (20-04-21) value used to clear all keys
+		return "NONE";
 	else
 		return "...";
 }
