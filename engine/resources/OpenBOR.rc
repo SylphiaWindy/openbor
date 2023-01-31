@@ -16,7 +16,7 @@ BEGIN
       VALUE "LegalCopyright", "OpenBOR"
       VALUE "OriginalFilename", "BOR"
       VALUE "ProductName", "OpenBOR"
-      VALUE "ProductVersion", BUILD
+      VALUE "ProductVersion", "7127 LNS"
     END
   END
   BLOCK "VarFileInfo"

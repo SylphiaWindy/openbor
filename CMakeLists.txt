@@ -1,24 +1,24 @@
 cmake_minimum_required(VERSION 3.1)
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
-project(OpenBOR)
-set(OPENBOR_VERSION "3.0.7141")
+project(FFLNS)
+set(OPENBOR_VERSION "3.0.7127-FFLNS")
 
 #####################
 # OPTIONS
 #####################
 option(BUILD_GFX "Build with GFX support" ON)
-option(BUILD_VORBIS "Build with BUILD_VORBIS support" ON)
-
+option(BUILD_VORBIS "Build with BUILD_VORBIS support" OFF)
+option(BUILD_TREMOR "Build with TREMOR support" ON)
 ##############
 # COMMON
 ##############
 include(FindPkgConfig)
-pkg_search_module(SDL2 REQUIRED sdl2)
 pkg_search_module(SDL2_GFX REQUIRED SDL2_gfx)
 pkg_search_module(VPX REQUIRED vpx)
 pkg_search_module(PNG REQUIRED libpng)
 pkg_search_module(ZLIB REQUIRED zlib)
+pkg_search_module(SDL2 REQUIRED sdl2)
 
 set(BOR_INC
         engine
@@ -26,6 +26,7 @@ set(BOR_INC
         engine/source
         engine/source/adpcmlib
         engine/source/gamelib
+        engine/source/gfxlib
         engine/source/openborscript
         engine/source/pnglib
         engine/source/preprocessorlib
@@ -48,6 +49,7 @@ file(GLOB BOR_SRC
         engine/source/*.c
         engine/source/adpcmlib/*.c
         engine/source/gamelib/*.c
+        engine/source/gfxlib/*.c
         engine/source/openborscript/*.c
         engine/source/pnglib/*.c
         engine/source/preprocessorlib/*.c
@@ -60,7 +62,7 @@ file(GLOB BOR_SRC
         )
 
 set(BOR_CFLAGS -g -Wall -fsigned-char -fomit-frame-pointer -DSDL -DSDL2 -DWEBM -DOPENGL -DLOADGL -D__CMAKE__)
-set(BOR_LDFLAGS ${SDL2_LIBRARIES} ${SDL2_GFX_LIBRARIES} ${VPX_LIBRARIES} ${PNG_LIBRARIES} ${ZLIB_LIBRARIES} m)
+set(BOR_LDFLAGS ${SDL2_LIBRARIES} ${PNG_LIBRARIES} ${ZLIB_LIBRARIES} ${VPX_LIBRARIES} m)
 
 ##############
 # VERSION.SH
@@ -87,7 +89,10 @@ if (BUILD_VORBIS)
     list(APPEND BOR_CFLAGS -DOV_EXCLUDE_STATIC_CALLBACKS)
     list(APPEND BOR_LDFLAGS ${VORBIS_LIBRARIES} ${VORBISFILE_LIBRARIES} ${OGG_LIBRARIES} m)
 endif ()
-
+if (BUILD_TREMOR)
+    list(APPEND BOR_CFLAGS -DTREMOR)
+    list(APPEND BOR_LDFLAGS vorbisidec ogg)
+endif (BUILD_TREMOR)
 #####################
 # PLATORM SPECIFIC
 #####################
@@ -118,20 +123,20 @@ target_link_libraries(${CMAKE_PROJECT_NAME} ${BOR_LDFLAGS})
 # SWITCH target
 #####################
 if (NINTENDO_SWITCH)
-    nx_generate_nacp(${CMAKE_PROJECT_NAME}.nacp
-            NAME "${CMAKE_PROJECT_NAME}"
-            AUTHOR "cpasjuste"
-            VERSION "${OPENBOR_VERSION}"
-            )
-    nx_create_nro(${CMAKE_PROJECT_NAME}
-            NACP ${CMAKE_PROJECT_NAME}.nacp
-            ICON "${CMAKE_SOURCE_DIR}/engine/resources/switch_icon.jpg"
-            )
-    add_custom_target(${PROJECT_NAME}_switch_release
-            DEPENDS ${PROJECT_NAME}.nro
-            COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/${PROJECT_NAME}-${OPENBOR_VERSION}_switch.zip
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/release/${PROJECT_NAME}
-            COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.nro ${CMAKE_BINARY_DIR}/release/${PROJECT_NAME}/
-            COMMAND cd ${CMAKE_BINARY_DIR}/release && zip -r ../${PROJECT_NAME}-${OPENBOR_VERSION}_switch.zip ${PROJECT_NAME}
-            )
+   nx_generate_nacp(${CMAKE_PROJECT_NAME}.nacp
+           NAME "${CMAKE_PROJECT_NAME}"
+           AUTHOR "cpasjuste, Sylphia"
+           VERSION "${OPENBOR_VERSION}"
+           )
+   nx_create_nro(${CMAKE_PROJECT_NAME}
+           NACP ${CMAKE_PROJECT_NAME}.nacp
+           ICON "${CMAKE_SOURCE_DIR}/engine/resources/switch_icon.jpg"
+           )
+   add_custom_target(${PROJECT_NAME}_switch_release
+           DEPENDS ${PROJECT_NAME}.nro
+           COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/${PROJECT_NAME}-${OPENBOR_VERSION}_switch.zip
+           COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/release/${PROJECT_NAME}
+           COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.nro ${CMAKE_BINARY_DIR}/release/${PROJECT_NAME}/
+           COMMAND cd ${CMAKE_BINARY_DIR}/release && zip -r ../${PROJECT_NAME}-${OPENBOR_VERSION}_switch.zip ${PROJECT_NAME}
+          )
 endif ()

@@ -87,6 +87,7 @@ extern int			  SAMPLE_BEEP2;
 extern int			  SAMPLE_BIKE;
 extern int            current_palette;
 extern s_player       player[4];
+extern int            players[4];
 extern s_level        *level;
 extern s_filestream   *filestreams;
 extern int			  numfilestreams;

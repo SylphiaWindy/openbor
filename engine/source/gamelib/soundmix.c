@@ -474,7 +474,10 @@ static void mixaudio(unsigned int todo)
             }
 
             // Mix a sample
-            lmusic = rmusic = sptr16[FIX_TO_INT(fp_pos)];
+            if(sptr16)
+            {
+                lmusic = rmusic = sptr16[FIX_TO_INT(fp_pos)];
+            }
             lmusic = (lmusic * lvolume / MAXVOLUME);
             rmusic = (rmusic * rvolume / MAXVOLUME);
             mixbuf[i++] += lmusic;

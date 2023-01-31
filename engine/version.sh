@@ -32,10 +32,10 @@ function get_revnum {
     # get commit hash, 7 chars in length is enough, and still work when supply as URL on github.com
     VERSION_COMMIT=`git rev-parse HEAD | cut -c -7`
   else # manually add build number if missing
-	echo "Missing version build, please add it manually and press ENTER: "; read -r VERSION_BUILD
-	echo "Missing version commit, please add it manually and press ENTER: "; read -r VERSION_COMMIT
-	echo "VERSION_BUILD is set to: $VERSION_BUILD"
-	echo "VERSION_COMMIT is set to: $VERSION_COMMIT"
+  echo "Missing version build, please add it manually and press ENTER: "; read -r VERSION_BUILD
+  echo "Missing version commit, please add it manually and press ENTER: "; read -r VERSION_COMMIT
+  echo "VERSION_BUILD is set to: $VERSION_BUILD"
+  echo "VERSION_COMMIT is set to: $VERSION_COMMIT"
   fi
 }
 
@@ -90,12 +90,12 @@ fi
 rm -rf resources/meta.xml
 echo "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <app version=\"1\">
-	<name>$VERSION_NAME</name>
-	<version>$VERSION_MAJOR.$VERSION_MINOR.$VERSION_BUILD</version>
-	<release_date>$VERSION_DATE</release_date>
-	<coder>Damon Caskey, Plombo, SX, Utunnels, White Dragon</coder>
-	<short_description>The Ultimate 2D Game Engine</short_description>
-	<long_description>OpenBOR is a highly advanced continuation of Senile Team's semi-2D game engine, Beats Of Rage.  Visit http://www.ChronoCrash.com for all news, events, and releases of the engine and game modules.</long_description>
+  <name>$VERSION_NAME</name>
+  <version>$VERSION_MAJOR.$VERSION_MINOR.$VERSION_BUILD</version>
+  <release_date>$VERSION_DATE</release_date>
+  <coder>Damon Caskey, Plombo, SX, Utunnels, White Dragon</coder>
+  <short_description>The Ultimate 2D Game Engine</short_description>
+  <long_description>OpenBOR is a highly advanced continuation of Senile Team's semi-2D game engine, Beats Of Rage.  Visit http://www.ChronoCrash.com for all news, events, and releases of the engine and game modules.</long_description>
 </app>" >> resources/meta.xml
 
 rm -rf resources/Info.plist
@@ -200,4 +200,3 @@ case $1 in
     write_version
     ;;
 esac
-

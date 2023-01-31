@@ -66,6 +66,18 @@ List *modelstxtcmdlist = NULL;
 List *levelcmdlist = NULL;
 List *levelordercmdlist = NULL;
 
+// New savescore system
+s_savescore *savescore_modes = NULL;
+unsigned short savescore_modes_count = 0;
+char *savescore_difficulty_variable = NULL;
+char *savescore_difficulty_names[MAX_DIFFICULTIES]; 
+unsigned short savescore_difficulty_count = 0;
+char *savescore_initials = NULL;
+char savescore_initials_default[41] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!?-_";
+int savescore_max_time = 20;
+int savescore_min_time = 8;
+int savescore_extra_time = 3;
+
 int atkchoices[MAX_ANIS]; //tempory values for ai functions, should be well enough LOL
 
 //see types.h
@@ -210,6 +222,8 @@ float min_noatk_chance = 0.0f;
 float max_noatk_chance = 0.6f;
 float offscreen_noatk_factor = 0.5f;
 float noatk_duration = 0.75f;
+
+//int default_model_selectcol = 0;
 
 char                *custScenes = NULL;
 char                *custBkgrds = NULL;
@@ -688,6 +702,7 @@ int                 timeleft			= 0;
 int                 oldtime             = 0;                    // One second back from time left.
 int                 holez				= 0;					// Used for setting spawn points
 int                 allow_secret_chars	= 0;
+int                 cheatcode			= 0;
 unsigned int        lifescore			= 50000;				// Number of points needed to earn a 1-up
 unsigned int        credscore			= 0;					// Number of points needed to earn a credit
 int                 mpblock				= 0;					// Take chip damage from health or MP first?
@@ -746,6 +761,7 @@ int                 ent_count			= 0;					// log count of entites
 int                 ent_max				= 0;
 
 s_player            player[MAX_PLAYERS];
+int                 players[MAX_PLAYERS] = {0, 0, 0, 0};
 u64                 bothkeys, bothnewkeys;
 
 s_playercontrols    playercontrols1;
@@ -1747,11 +1763,11 @@ void execute_onblocko_script(entity *ent, int plane, entity *other)
         ScriptVariant_ChangeType(&tempvar, VT_PTR);
         tempvar.ptrVal = (VOID *)ent;
         Script_Set_Local_Variant(cs, "self",        &tempvar);
-        ScriptVariant_ChangeType(&tempvar, VT_INTEGER);
+		ScriptVariant_ChangeType(&tempvar, VT_INTEGER);
         tempvar.lVal = (LONG)plane;
         Script_Set_Local_Variant(cs, "plane",      &tempvar);
         ScriptVariant_ChangeType(&tempvar, VT_PTR);
-        tempvar.ptrVal = (VOID *)other;
+		tempvar.ptrVal = (VOID *)other;
         Script_Set_Local_Variant(cs, "obstacle",    &tempvar);
         Script_Execute(cs);
 
@@ -2551,7 +2567,10 @@ void clearsettings()
     savedata.uselog = 1;
     savedata.debuginfo = 0;
     savedata.fullscreen = 0;
-    savedata.vsync = 0;
+    #ifdef RASPBERRY
+    savedata.fullscreen = 1;
+    #endif    
+    savedata.vsync = 1;
 
 	#if WII
     savedata.stretch = 1;
@@ -2706,7 +2725,62 @@ void clearHighScore()
     }
 }
 
+void initHighScore()
+{
+    FILE *handle = NULL;
+    char path[MAX_BUFFER_LEN] = {""};
+    char tmpname[MAX_BUFFER_LEN] = {""};
+    
+    // if there are no savescore modes we use the old savescore system
+    if(!savescore_modes)
+    {
+       loadHighScoreFile();
+       return; 
+    }
+    
+    // save in each mode a direct pointer to its savescore
+    for(int i = 0; i < savescore_modes_count; ++i)
+    {
+        s_savescore *savescore_mode = &savescore_modes[i * savescore_difficulty_count];
+        levelsets[savescore_mode->mode].savescore =  savescore_mode;
+    }
 
+    // load savescore modes from file
+    getBasePath(path, "Saves", 0);
+    getPakName(tmpname, 1);
+    strcat(path, tmpname);
+    handle = fopen(path, "rb");
+    if(handle == NULL)
+    {
+        return;
+    }
+
+    // read savescores until we find one with a not compatible format
+    int valid = 1;
+    while(valid)
+    {
+        s_savescore savescore_loaded;
+        valid = fread(&savescore_loaded, 1, sizeof(s_savescore), handle);
+        
+        // check if it is a savescore with the expected format
+        if(savescore_loaded.compatibleversion == CV_HIGH_SCORE)
+        {
+            unsigned int mode = savescore_loaded.mode;
+            unsigned int difficulty = savescore_loaded.difficulty;
+            
+            // check if the mode and difficulty exist
+            if(difficulty < savescore_difficulty_count &&
+                mode < num_difficulties &&
+                levelsets[mode].savescore &&
+                levelsets[mode].savescore[difficulty].compatibleversion == CV_HIGH_SCORE)
+            {
+                levelsets[mode].savescore[difficulty] = savescore_loaded;
+            }
+        }
+    }
+
+    fclose(handle);
+}
 
 int saveGameFile()
 {
@@ -2766,13 +2840,13 @@ int loadGameFile()
         clearSavedGame();
         result = 0;
     }
-    else
+    else if(cheatcode == 0)
     {
         bonus = 0;
         for(i = 0; i < num_difficulties; i++) if(savelevel[i].times_completed > 0)
-            {
-                bonus += savelevel[i].times_completed;
-            }
+        {
+            bonus += savelevel[i].times_completed;
+        }
     }
 
     fclose(handle);
@@ -2799,7 +2873,17 @@ int saveHighScoreFile()
     {
         return 0;
     }
-    fwrite(&savescore, 1, sizeof(savescore), handle);
+
+    // if there are no savescore modes we use the old savescore system
+    if(savescore_modes)
+    {
+        fwrite(savescore_modes, savescore_modes_count * savescore_difficulty_count, sizeof(s_savescore), handle);
+    }
+    else
+    {
+        fwrite(&savescore, 1, sizeof(savescore), handle);
+    }
+    
     fclose(handle);
     return 1;
 #else
@@ -4937,17 +5021,16 @@ int is_model_cache_index_selectable(int cache_index)
 		return 0;
 	}
 
-	// Element must contain a valid model.
-	if (!model_cache[cache_index].model)
-	{
-		return 0;
-	}
-	
-	// Element's model must be selectable.
-	if (!is_model_selectable(model_cache[cache_index].model))
-	{
-		return 0;
-	}
+    if (model_cache[cache_index].clearcount > bonus)
+    {
+        return 0;
+    }
+    
+    // LNS quick load do not have a model
+    if (model_cache[cache_index].model && !is_model_selectable(model_cache[cache_index].model))
+    {
+        return 0;
+    }
 
 	// All checks passed. Return true.
 	return 1;
@@ -5044,8 +5127,16 @@ s_model *nextplayermodel(s_model *current)
 		// If valid and selectable, return the model.
         if(is_model_cache_index_selectable(i))
         {
-			//printf("next %s\n", model_cache[i].model->name);
-			return model_cache[i].model;            
+		  //printf("next %s\n", model_cache[i].model->name);
+          // quickload
+          if(!model_cache[i].model)
+          {
+            load_cached_model(model_cache[i].name, "select_screen", 3, true);
+          }
+          if(model_cache[i].model)
+          {
+            return model_cache[i].model;
+          }           
         }
     }
     borShutdown(1, "Fatal: can't find any player models!");
@@ -5095,6 +5186,94 @@ s_model *nextplayermodeln(s_model *current, int player_index)
     return model;
 }
 
+s_model *nextplayermodelcol(s_model *current)
+{
+	 int i;
+    int curindex = -1;
+    int loops;
+    if(current)
+    {
+        // Find index of current player model
+        for(i = 0; i < models_cached; i++)
+        {
+            if(model_cache[i].model == current)
+            {
+                curindex = i;
+                break;
+            }
+        }
+    }
+    // Find next player model (first one after current index)
+    for(i = curindex + 1, loops = 0; loops < models_cached; i++, loops++)
+    {
+        if(i >= models_cached)
+        {
+            i = 0;
+        }
+        if(model_cache[i].selectable && 
+          model_cache[i].clearcount <= bonus && 
+          model_cache[i].selectcol == current->selectcol)
+        {
+          // quickload
+          if (!model_cache[i].model)
+          {
+            load_cached_model(model_cache[i].name, "select_screen", 3, true);
+          }
+          if (model_cache[i].model)
+          {
+            return model_cache[i].model;
+          }
+        }
+    }
+    borShutdown(1, "Fatal: can't find any player models!");
+    return NULL;
+}
+
+s_model *nextplayermodelcoln(s_model *current, int p)
+{
+    int i;
+    s_set_entry *set = levelsets + current_set;
+    s_model *model = nextplayermodelcol(current);
+
+    if(set->nosame & 1)
+    {
+        int used_player_count = 0, player_count = 0;
+
+        // check count of selectable players
+        for(i = 0; i < models_cached; i++)
+        {
+            if(model_cache[i].selectable &&
+              model_cache[i].clearcount <= bonus)
+            {
+                ++player_count;
+            }
+        }
+
+        // count all used player
+        for(i = 0; model && i < MAX_PLAYERS; i++)
+        {
+            if(i != p && stricmp(player[p].name, player[i].name) == 0)
+            {
+                ++used_player_count;
+                // all busy players? return the next natural
+                if (used_player_count >= player_count) return model;
+            }
+        }
+
+        // search the first free player
+        for(i = 0; model && i < MAX_PLAYERS; i++)
+        {
+            if(i != p && stricmp(model->name, player[i].name) == 0)
+            {
+                i = -1;
+                model = nextplayermodelcol(model);
+            }
+        }
+    }
+
+    return model;
+}
+
 // Use by player select menus
 s_model *prevplayermodel(s_model *current)
 {
@@ -5124,8 +5303,15 @@ s_model *prevplayermodel(s_model *current)
 		// If valid and selectable, return the model.
         if(is_model_cache_index_selectable(i))
         {
-            //printf("prev %s\n", model_cache[i].model->name);
+          // quickload
+          if (!model_cache[i].model)
+          {
+            load_cached_model(model_cache[i].name, "select_screen", 3, true);
+          }
+          if (model_cache[i].model)
+          {
             return model_cache[i].model;
+          }
         }
     }
     borShutdown(1, "Fatal: can't find any player models!");
@@ -5171,13 +5357,169 @@ s_model *prevplayermodeln(s_model *current, int player_index)
     return model;
 }
 
+s_model *prevplayermodelcol(s_model *current)
+{
+	 int i;
+    int curindex = -1;
+    int loops;
+    if(current)
+    {
+        // Find index of current player model
+        for(i = 0; i < models_cached; i++)
+        {
+            if(model_cache[i].model == current)
+            {
+                curindex = i;
+                break;
+            }
+        }
+    }
+    // Find next player model (first one after current index)
+    for(i = curindex - 1, loops = 0; loops < models_cached; i--, loops++)
+    {
+        if(i < 0)
+        {
+            i = models_cached - 1;
+        }
+        if(model_cache[i].selectable &&
+          model_cache[i].clearcount <= bonus &&
+          model_cache[i].selectcol == current->selectcol)
+        {
+          // quickload
+          if (!model_cache[i].model)
+          {
+            load_cached_model(model_cache[i].name, "select_screen", 3, true);
+          }
+          if (model_cache[i].model)
+          {
+            return model_cache[i].model;
+          }
+        }
+    }
+    borShutdown(1, "Fatal: can't find any player models!");
+    return NULL;
+}
+
+s_model *prevplayermodelcoln(s_model *current, int p)
+{
+    int i;
+    s_set_entry *set = levelsets + current_set;
+    s_model *model = prevplayermodelcol(current);
+
+    if(set->nosame & 1)
+    {
+        int used_player_count = 0, player_count = 0;
+
+        // check count of selectable players
+        for(i = 0; i < models_cached; i++)
+        {
+            if(model_cache[i].selectable &&
+              model_cache[i].clearcount <= bonus)
+            {
+                ++player_count;
+            }
+        }
+
+        // count all used player
+        for(i = 0; model && i < MAX_PLAYERS; i++)
+        {
+            if(i != p && stricmp(player[p].name, player[i].name) == 0)
+            {
+                ++used_player_count;
+                // all busy players? return the prev natural
+                if (used_player_count >= player_count) return model;
+            }
+        }
+
+        // search the first free player
+        for(i = 0; model && i < MAX_PLAYERS; i++)
+        {
+            if(i != p && stricmp(model->name, player[i].name) == 0)
+            {
+                i = -1;
+                model = prevplayermodelcol(model);
+            }
+        }
+    }
+
+    return model;
+}
+
+s_model *selectrandomplayer(s_model *current)
+{
+    unsigned short players[MAX_SEL_PLAYERS];
+    unsigned short player_count = 0;
+    s_set_entry *set = levelsets + current_set;
+    s_model *model = current;
+    int selected_index = 0;
+
+    for(int i = 0; i < models_cached; i++)
+    {
+        if(model_cache[i].selectable &&
+            model_cache[i].clearcount <= bonus)
+        {
+            bool allowed = true;
+            // If no same is allowed we exclude all player selections except current
+            if(set->nosame & 1)
+            {
+                for(int player_index = 0; player_index < MAX_PLAYERS; ++player_index)
+                {
+                    if(model_cache[i].model != current && stricmp(model_cache[i].name, player[player_index].name) == 0)
+                    {
+                        allowed = false;
+                        break;
+                    }
+                }
+            }
+            
+            if(allowed)
+            {
+                players[player_count] = i;
+                ++player_count;
+                if(player_count >= MAX_SEL_PLAYERS)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    if(player_count > 0)
+    {
+        selected_index = players[rand32() % player_count];
+
+        // quickload
+        if (!model_cache[selected_index].model)
+        {
+            load_cached_model(model_cache[selected_index].name, "select_screen", 3, true);
+        }
+
+        if(model_cache[selected_index].model)
+        {
+            model = model_cache[selected_index].model;
+        }
+    }
+
+    return model;
+}
+
+int selectrandomcolourmap(s_model *current, int p)
+{
+    int random_colourmap = rand32() % current->maps_loaded;
+
+    // use the nextcolourmap function to avoid same colourmaps if not allowed
+    random_colourmap = nextcolourmapn(current, random_colourmap, p);
+
+    return random_colourmap;
+}
+
 // Reset All Player Models to on/off for Select Screen.
 static void reset_playable_list(char which)
 {
     int i;
     for(i = 0; i < models_cached; i++)
     {
-        if(!which || (model_cache[i].model && model_cache[i].model->type == TYPE_PLAYER))
+        if(!which || (model_cache[i].player))
         {
             model_cache[i].selectable = which;
         }
@@ -5189,9 +5531,14 @@ static void load_playable_list(char *buf)
 {
     int i, index;
     char *value;
-    s_model *playermodels = NULL;
     ArgList arglist;
     char argbuf[MAX_ALLOWSELECT_LEN] = "";
+
+    if (cheatcode == -1)
+    {
+      reset_playable_list(1);
+      return;
+    }
 
     ParseArgs(&arglist, buf, argbuf);
 
@@ -5210,9 +5557,7 @@ static void load_playable_list(char *buf)
 
     for(i = 1; (value = GET_ARG(i))[0]; i++)
     {
-        playermodels = findmodel(value);
-        //if(playermodels == NULL) borShutdown(1, "Player model '%s' is not loaded.\n", value);
-        index = get_cached_model_index(playermodels->name);
+        index = get_cached_model_index(value);
         if(index == -1)
         {
             borShutdown(1, "Player model '%s' is not cached.\n", value);
@@ -6357,6 +6702,11 @@ void cache_model(char *name, char *path, int flag)
     model_cache[models_cached].path[len] = 0;
 
     model_cache[models_cached].loadflag = flag;
+    
+    // quickload
+    model_cache[models_cached].player = false;
+    model_cache[models_cached].clearcount = 0;
+    model_cache[models_cached].selectcol = 0;
 
     _peek_model_name(models_cached);
     ++models_cached;
@@ -8744,6 +9094,9 @@ s_model *init_model(int cacheindex, int unload)
     newchar->icon.mpmed         = -1;               //No mpmed icon yet.
     newchar->edgerange.x        = 0;
     newchar->edgerange.z        = 0;
+    newchar->selectcol          = 0;
+    newchar->ignore_projectile_wall_collision = 0;
+    newchar->noexplode          = 0;
 
     // Default Attack1 in chain must be referenced if not used.
     for(i = 0; i < MAX_ATCHAIN; i++)
@@ -8805,6 +9158,7 @@ s_model *init_model(int cacheindex, int unload)
     // default string value, only by reference
     newchar->rider = get_cached_model_index("K'");
     newchar->flash = newchar->bflash = get_cached_model_index("flash");
+    newchar->flashoverridesource = newchar->flashoverridetarget = -1;
 
     //Default offense/defense values.
     for(i = 0; i < max_attack_types; i++)
@@ -8829,7 +9183,7 @@ void update_model_loadflag(s_model *model, char unload)
     model->unload = unload;
 }
 
-s_model *load_cached_model(char *name, char *owner, char unload)
+s_model *load_cached_model(char *name, char *owner, char unload, bool quickload)
 {
 
     #define LOG_CMD_TITLE   "%-20s"
@@ -9003,12 +9357,21 @@ s_model *load_cached_model(char *name, char *owner, char unload)
     modelCommands cmd;
     s_scripts *tempscripts;
 
+    bool command_skip_all = false;
+    bool command_skip_this = false;
+
 #ifdef DEBUG
     printf("load_cached_model: %s, unload: %d\n", name, unload);
 #endif
 
-    // Start up the standard log entry.
-    printf("Loaded '%s'", name);
+    if (quickload)
+    {
+      printf("Loaded quick '%s'", name);
+    }
+    else
+    {
+      printf("Loaded '%s'", name);
+    }
 
     // Model already loaded but we might want to unload after level is completed.
     if((tempmodel = findmodel(name)) != NULL)
@@ -9062,6 +9425,7 @@ s_model *load_cached_model(char *name, char *owner, char unload)
 
     newchar->hitwalltype = -1; // init to -1
 
+    newchar->quickload = quickload;
 
     //char* test = "load   knife 0";
     //ParseArgs(&arglist,test,argbuf);
@@ -9075,9 +9439,47 @@ s_model *load_cached_model(char *name, char *owner, char unload)
         {
             command = GET_ARG(0);
             cmd = getModelCommand(modelcmdlist, command);
+            command_skip_this = false;
 
             //if (cmd != CMD_MODEL_FRAME) framenum = 0;
 
+            if (quickload)
+            {
+              switch (cmd)
+              {
+                case CMD_MODEL_ANIM:
+                  if (strcmp(GET_ARG(1), "select") == 0 || strcmp(GET_ARG(1), "waiting") == 0)
+                  {
+                    command_skip_all = false;
+                  }
+                  else
+                  {
+                    command_skip_all = true;
+                    command_skip_this = true;
+                  }
+                  break;
+                case CMD_MODEL_NAME:
+                case CMD_MODEL_TYPE:
+                case CMD_MODEL_ICON:
+                case CMD_MODEL_SELECTCOL:
+                case CMD_MODEL_PALETTE:
+                case CMD_MODEL_ALTERNATEPAL:
+                case CMD_MODEL_LOOP:
+                case CMD_MODEL_DELAY:
+                case CMD_MODEL_OFFSET:
+                case CMD_MODEL_SOUND:
+                case CMD_MODEL_FSHADOW:
+                case CMD_MODEL_FRAME:
+                  command_skip_this = command_skip_all;
+                  break;
+                default:
+                  command_skip_this = true;
+                  break;
+              }
+            }
+
+            if (!command_skip_this)
+            {
             switch(cmd)
             {
             case CMD_MODEL_BACKPAIN:
@@ -9146,12 +9548,12 @@ s_model *load_cached_model(char *name, char *owner, char unload)
                 tempmodel = findmodel(value);
                 if(!tempmodel)
                 {
-                    load_cached_model(value, name, GET_INT_ARG(2));
+                    load_cached_model(value, name, 3, false);
                 }
-                else
-                {
-                    update_model_loadflag(tempmodel, GET_INT_ARG(2));
-                }
+                // else
+                // {
+                //     update_model_loadflag(tempmodel, GET_INT_ARG(2));
+                // }
                 break;
             case CMD_MODEL_SCORE:
                 newchar->score = GET_INT_ARG(1);
@@ -9202,6 +9604,9 @@ s_model *load_cached_model(char *name, char *owner, char unload)
                 break;
             case CMD_MODEL_SUBJECT_TO_WALL:
                 newchar->subject_to_wall = (0 != GET_INT_ARG(1));
+                break;
+            case CMD_MODEL_IGNOREPROJECTILEWALLCOLLISION:
+                newchar->ignore_projectile_wall_collision = (0 != GET_INT_ARG(1));
                 break;
             case CMD_MODEL_SUBJECT_TO_HOLE:
                 newchar->subject_to_hole = (0 != GET_INT_ARG(1));
@@ -9343,6 +9748,12 @@ s_model *load_cached_model(char *name, char *owner, char unload)
                 {
                     newchar->flash = get_cached_model_index(value);
                 }
+                break;
+            case CMD_MODEL_FLASHOVERRIDE:
+                value = GET_ARG(1);
+                newchar->flashoverridesource = get_cached_model_index(value);
+                value = GET_ARG(2);
+                newchar->flashoverridetarget = get_cached_model_index(value);
                 break;
             case CMD_MODEL_BFLASH:	// Flash that is spawned if an attack is blocked
                 value = GET_ARG(1);
@@ -9710,6 +10121,9 @@ s_model *load_cached_model(char *name, char *owner, char unload)
             case CMD_MODEL_NODROP:
                 newchar->nodrop = GET_INT_ARG(1);
                 break;
+            case CMD_MODEL_NOEXPLODE:
+                newchar->noexplode = GET_INT_ARG(1);
+                break;
             case CMD_MODEL_THOLD:
                 // Threshold for enemies/players block
                 newchar->thold = GET_INT_ARG(1);
@@ -9884,6 +10298,9 @@ s_model *load_cached_model(char *name, char *owner, char unload)
                 break;
             case CMD_MODEL_CREDIT:
                 newchar->credit = GET_INT_ARG(1);
+                break;
+			case CMD_MODEL_SELECTCOL:
+                newchar->selectcol = GET_INT_ARG(1);                    // 30-12-2004 and store for character
                 break;
             case CMD_MODEL_NOPAIN:
                 newchar->nopain = GET_INT_ARG(1);
@@ -11866,7 +12283,7 @@ s_model *load_cached_model(char *name, char *owner, char unload)
                     }
                 }
             }
-
+        }
         }
         // Go to next line
         pos += getNewLineStart(buf + pos);
@@ -12134,8 +12551,6 @@ lCleanup:
 
     #undef LOG_CMD_TITLE
 }
-
-
 
 int is_set(s_model *model, int m)      // New function to determine if a freespecial has been set
 {
@@ -12646,7 +13061,7 @@ int load_models()
         init_colourtable();
     }
 
-    update_loading(&loadingbg[0], -1, 1); // initialize the update screen
+    update_loading(&loadingbg[0], 0, 1); // initialize the update screen
 
     if(custModels != NULL)
     {
@@ -12818,8 +13233,8 @@ int load_models()
         }
         if(model_cache[i].loadflag)
         {
-            load_cached_model(model_cache[i].name, "models.txt", 0);
-            update_loading(&loadingbg[0], ++pos, modelLoadCount);
+          preload_cached_model(model_cache[i].name);
+          update_loading(&loadingbg[0], ++pos, modelLoadCount);
         }
     }
     printf("\nLoading models...............\tDone!\n");
@@ -12833,8 +13248,105 @@ int load_models()
     return 1;
 }
 
+void identify_selectable_players()
+{
+  char *buf, *value;
+  size_t size = 0;
+  ptrdiff_t pos = 0;
+  ArgList arglist;
+  char argbuf[MAX_ALLOWSELECT_LEN + 1] = "";
+  
+  for(int levelset_index = 0; levelset_index < num_difficulties; ++levelset_index)
+  {
+    s_set_entry* levelset = levelsets + levelset_index;
+    for(int level_index = 0; level_index < levelset->numlevels; ++level_index)
+    {
+      s_level_entry* level = levelset->levelorder + level_index;
+      if(level->type == LE_TYPE_SELECT_SCREEN)
+      {
+        buffer_pakfile(level->filename, &buf, &size);
+        pos = 0;
+        while(pos < size)
+        {
+          ParseArgs(&arglist, buf + pos, argbuf);
+          value = GET_ARG(0);
+          if(value && value[0])
+          {
+            if(stricmp(value, "allowselect") == 0)
+            {
+              for(int arg_index = 1; (value = GET_ARG(arg_index))[0]; ++arg_index)
+              {
+                int model_index = get_cached_model_index(value);
+                if(model_index >= 0)
+                {
+                  model_cache[model_index].selectable = 1;
+                }
+              }
+            }
+          }
+          pos += getNewLineStart(buf + pos);
+        }
+      }
+    }
+  }
+}
 
+void preload_cached_model(char *name)
+{
+  char *filename, *buf, *command;
+  char argbuf[MAX_ARG_LEN + 1] = {""};
+  ArgList arglist;
+  size_t size = 0;
+  ptrdiff_t pos = 0;   
+  modelCommands cmd;
+  bool exit = false;
+  
+  int model_index = get_cached_model_index(name);
+  if(model_index >= 0)
+  {
+    filename = model_cache[model_index].path;
+    
+    if(buffer_pakfile(filename, &buf, &size) != 1)
+    {
+        return;
+        borShutdown(1, "Unable to open file '%s'\n\n", filename);
+    }
+    
+    while(!exit)
+    {
+      if(ParseArgs(&arglist, buf + pos, argbuf))
+      {
+          command = GET_ARG(0);
+          cmd = getModelCommand(modelcmdlist, command);
+          switch(cmd)
+          {
+          case CMD_MODEL_SECRET:
+            model_cache[model_index].clearcount = GET_INT_ARG(2);
+            break;
+          case CMD_MODEL_SELECTCOL:
+            model_cache[model_index].selectcol = GET_INT_ARG(1);
+            break;
+          case CMD_MODEL_TYPE:
+            if (stricmp(GET_ARG(1), "player") == 0 && model_cache[model_index].selectcol > 0)
+            {
+              model_cache[model_index].selectable = 1;
+            }
+            exit = true;
+            break;
+          default:
+            break;
+          }
+      }
+      pos += getNewLineStart(buf + pos);
+    }
+  }
+}
 
+void unload_model(s_model *model)
+{
+    cache_model_sprites(model, 0);
+    free_model(model);
+}
 
 void unload_levelorder()
 {
@@ -12879,6 +13391,12 @@ void unload_levelorder()
             }
         }
 
+        if(savescore_modes)
+        {
+            free(savescore_modes);
+            savescore_modes = NULL;
+        }
+        
         free(levelsets);
         levelsets = NULL;
     }
@@ -13263,6 +13781,73 @@ void load_levelorder()
             branch_name[0] = 0;
             le = NULL;
             break;
+        case CMD_LEVELORDER_HALLFAME:
+        {
+            int available_difficulties_count = (arglist.count - 1) / 2;
+            // check if we are using the new savescore system
+            if(savescore_difficulty_count > 0 && available_difficulties_count > 0)
+            {
+                ++savescore_modes_count;
+                if(savescore_modes)
+                {
+                    savescore_modes = realloc(savescore_modes, sizeof(s_savescore) * savescore_difficulty_count * savescore_modes_count);
+                }
+                else
+                {
+                    savescore_modes = malloc(sizeof(s_savescore) * savescore_difficulty_count);
+                }
+
+                // initialize the new memory block with 0s
+                s_savescore *savescore_mode = &savescore_modes[(savescore_modes_count - 1) * savescore_difficulty_count];
+                memset(savescore_mode, 0, sizeof(s_savescore) * savescore_difficulty_count);
+
+                // init each available difficulty for this mode
+                for(int difficulty_index = 0; difficulty_index < savescore_difficulty_count; ++difficulty_index)
+                {
+                    savescore_mode[difficulty_index].mode = num_difficulties - 1;
+                    savescore_mode[difficulty_index].difficulty = difficulty_index;
+                }
+
+                // enable the available difficulties in this mode
+                for(int difficulty_index = 0; difficulty_index < available_difficulties_count; ++difficulty_index)
+                {
+                    int arg_index = (difficulty_index * 2) + 1; 
+                    int difficulty = GET_INT_ARG(arg_index);
+                    int credits = GET_INT_ARG(arg_index + 1);
+                    if(difficulty >= 0 && difficulty < savescore_difficulty_count)
+                    {
+                        savescore_mode[difficulty].compatibleversion = CV_HIGH_SCORE;
+                        savescore_mode[difficulty].credits = credits;
+                    }
+                }
+            }
+            break;
+        }
+        case CMD_LEVELORDER_HALLFAMEDIFFICULTIES:
+        {
+            savescore_difficulty_count = arglist.count - 2;
+            if(savescore_difficulty_count > 0)
+            {
+                savescore_difficulty_variable = NAME(GET_ARG(1));
+                for(int difficulty_index = 0; difficulty_index < savescore_difficulty_count; ++difficulty_index)
+                {
+                    savescore_difficulty_names[difficulty_index] = NAME(GET_ARG(difficulty_index + 2));
+                }
+            }
+            break;
+        }
+        case CMD_LEVELORDER_HALLFAMEINITIALS:
+        {
+            savescore_initials = NAME(GET_ARG(1));
+            break;
+        }
+        case CMD_LEVELORDER_HALLFAMETIMES:
+        {
+            savescore_max_time = GET_INT_ARG(1);
+            savescore_min_time = GET_INT_ARG(2);
+            savescore_extra_time = GET_INT_ARG(3);
+            break;
+        }
         case CMD_LEVELORDER_IFCOMPLETE:
             CHKDEF;
             set->ifcomplete = GET_INT_ARG(1);
@@ -14287,6 +14872,8 @@ void load_levelorder()
         }
     }
 
+    initHighScore();
+
 lCleanup:
 
     if(buf)
@@ -14526,7 +15113,7 @@ static void addhole(float x, float z, float x1, float x2, float x3, float x4, fl
     level->numholes++;
 }
 
-static void addwall(float x, float z, float x1, float x2, float x3, float x4, float depth, float alt, int type)
+static void addwall(float x, float z, float x1, float x2, float x3, float x4, float depth, float alt, int type, int ignore_projectile_wall_collision)
 {
     __realloc(level->walls, level->numwalls);
     level->walls[level->numwalls].x = x;
@@ -14538,6 +15125,7 @@ static void addwall(float x, float z, float x1, float x2, float x3, float x4, fl
     level->walls[level->numwalls].depth = depth;
     level->walls[level->numwalls].height = alt;
     level->walls[level->numwalls].type = type;
+    level->walls[level->numwalls].ignore_projectile_wall_collision = ignore_projectile_wall_collision;
 
     level->numwalls++;
 }
@@ -14687,7 +15275,7 @@ void load_level(char *filename)
         init_colourtable();
     }
 
-    update_loading(&loadingbg[1], -1, 1); // initialize the update screen
+    update_loading(&loadingbg[1], 0, 1); // initialize the update screen
 
     memset(&next, 0, sizeof(next));
 
@@ -14771,7 +15359,7 @@ void load_level(char *filename)
             standard_palette(1);
             lifebar_colors();
             init_colourtable();
-            update_loading(&bgPosi, -1, 1); // initialize the update screen
+            update_loading(&bgPosi, 0, 1); // initialize the update screen
             break;
         case CMD_LEVEL_MUSICFADE:
             memset(&next, 0, sizeof(next));
@@ -14830,12 +15418,12 @@ void load_level(char *filename)
             tempmodel = findmodel(GET_ARG(1));
             if (!tempmodel)
             {
-                load_cached_model(GET_ARG(1), filename, GET_INT_ARG(2));
+                load_cached_model(GET_ARG(1), filename, 3, false);
             }
-            else
-            {
-                update_model_loadflag(tempmodel, GET_INT_ARG(2));
-            }
+            // else
+            // {
+            //     update_model_loadflag(tempmodel, GET_INT_ARG(2));
+            // }
             break;
         case CMD_LEVEL_ALPHAMASK:
             strncpy(maskPath, GET_ARG(1), MAX_BUFFER_LEN - 1);
@@ -15292,7 +15880,7 @@ void load_level(char *filename)
             addhole(GET_FLOAT_ARG(1), GET_FLOAT_ARG(2), GET_FLOAT_ARG(3), GET_FLOAT_ARG(4), GET_FLOAT_ARG(5), GET_FLOAT_ARG(6), GET_FLOAT_ARG(7), GET_FLOAT_ARG(8), GET_FLOAT_ARG(9));
             break;
         case CMD_LEVEL_WALL:
-            addwall(GET_FLOAT_ARG(1), GET_FLOAT_ARG(2), GET_FLOAT_ARG(3), GET_FLOAT_ARG(4), GET_FLOAT_ARG(5), GET_FLOAT_ARG(6), GET_FLOAT_ARG(7), GET_FLOAT_ARG(8), GET_FLOAT_ARG(9));
+            addwall(GET_FLOAT_ARG(1), GET_FLOAT_ARG(2), GET_FLOAT_ARG(3), GET_FLOAT_ARG(4), GET_FLOAT_ARG(5), GET_FLOAT_ARG(6), GET_FLOAT_ARG(7), GET_FLOAT_ARG(8), GET_FLOAT_ARG(9), GET_FLOAT_ARG(10));
             break;
         case CMD_LEVEL_BASEMAP:
             addbasemap(GET_FLOAT_ARG(1), GET_FLOAT_ARG(2), GET_FLOAT_ARG(3), GET_FLOAT_ARG(4), GET_FLOAT_ARG(5), GET_FLOAT_ARG(6), GET_FLOAT_ARG(7));
@@ -15443,7 +16031,7 @@ void load_level(char *filename)
             }
             else
             {
-                tempmodel = load_cached_model(GET_ARG(1), filename, 0);
+                tempmodel = load_cached_model(GET_ARG(1), filename, 3, false);
             }
             if(tempmodel)
             {
@@ -15562,7 +16150,7 @@ void load_level(char *filename)
             }
             else
             {
-                tempmodel = load_cached_model(GET_ARG(1), filename, 0);
+                tempmodel = load_cached_model(GET_ARG(1), filename, 3, false);
             }
             if(tempmodel)
             {
@@ -15589,7 +16177,7 @@ void load_level(char *filename)
             }
             else
             {
-                tempmodel = load_cached_model(GET_ARG(1), filename, 0);
+                tempmodel = load_cached_model(GET_ARG(1), filename, 3, false);
             }
             if(tempmodel)
             {
@@ -15851,7 +16439,7 @@ void load_level(char *filename)
 
     if(exit_blocked)
     {
-        addwall(level->width - 30, PLAYER_MAX_Z, -panel_height, 0, 1000, 1000, panel_height, MAX_WALL_HEIGHT + 1, 0);
+        addwall(level->width - 30, PLAYER_MAX_Z, -panel_height, 0, 1000, 1000, panel_height, MAX_WALL_HEIGHT + 1, 0, 0);
     }
     if(exit_hole)
     {
@@ -16190,6 +16778,7 @@ void updatestatus()
     int i;
     s_model *model = NULL;
     s_set_entry *set = levelsets + current_set;
+    char* name = NULL;
 
     for(i = 0; i < set->maxplayers; i++)
     {
@@ -16200,7 +16789,7 @@ void updatestatus()
         else if(player[i].joining && player[i].name[0])
         {
             model = findmodel(player[i].name);
-            if((player[i].playkeys & FLAG_ANYBUTTON || skipselect[i][0]) && !freezeall && !nojoin)    // Can't join while animations are frozen
+            if((player[i].playkeys & (FLAG_START | FLAG_ATTACK) || skipselect[i][0]) && !freezeall && !nojoin)    // Can't join while animations are frozen
             {
                 player[i].lives = PLAYER_LIVES;            // to address new lives settings
                 player[i].joining = 0;
@@ -16235,9 +16824,27 @@ void updatestatus()
                 player[i].playkeys = 0;
             }
             // don't like a characters color try a new one!
-            else if(player[i].playkeys & (FLAG_MOVEUP | FLAG_MOVEDOWN) && colourselect)
+            else if(player[i].playkeys & (FLAG_MOVEUP | FLAG_MOVEDOWN))
             {
-                player[i].colourmap = ((player[i].playkeys & FLAG_MOVEUP) ? nextcolourmapn : prevcolourmapn)(model, player[i].colourmap, i);
+                model = ((player[i].playkeys & FLAG_MOVEUP) ? prevplayermodelcoln : nextplayermodelcoln)(model, i);
+                strcpy(player[i].name, model->name);
+
+                player[i].colourmap = (colourselect && (set->nosame & 2)) ? nextcolourmapn(model, -1, i) : 0;
+
+                player[i].playkeys = 0;
+            }
+            else if (player[i].playkeys & (FLAG_JUMP | FLAG_SPECIAL) && colourselect)
+            {
+                player[i].colourmap = ((player[i].playkeys & FLAG_JUMP) ? nextcolourmapn : prevcolourmapn)(model, player[i].colourmap, i);
+
+                player[i].playkeys = 0;
+            }
+            else if(player[i].playkeys & FLAG_ATTACK2)
+            {
+                model = selectrandomplayer(model);
+                strcpy(player[i].name, model->name);
+
+                player[i].colourmap = (colourselect) ? selectrandomcolourmap(model, i) : 0;
 
                 player[i].playkeys = 0;
             }
@@ -16246,11 +16853,32 @@ void updatestatus()
         {
             if(player[i].playkeys & FLAG_START)
             {
+                int prev_color = 0;
                 player[i].lives = 0;
-                model = skipselect[i][0] ? findmodel(skipselect[i]) : nextplayermodeln(NULL, i);
+                players[i] = 1;
+                
+                if(skipselect[i][0])
+                {
+                    name = skipselect[i];
+                    model = findmodel(name);
+                }
+                else if(player[i].name[0])
+                {
+                    name = player[i].name;
+                    model = findmodel(name);
+                    prev_color = player[i].colourmap;
+                }
+                else
+                {
+                    model = nextplayermodeln(NULL, i);
+                }
+                if(!model && name)
+                {
+                    model = load_cached_model(name, "continue_screen", 3, true);
+                }
                 strncpy(player[i].name, model->name, MAX_NAME_LEN);
 
-                player[i].colourmap = (colourselect && (set->nosame & 2)) ? nextcolourmapn(model, -1, i) : 0;
+                player[i].colourmap = (colourselect && (set->nosame & 2)) ? nextcolourmapn(model, prev_color-1, i) : prev_color;
 
                 player[i].joining = 1;
                 player[i].disablekeys = player[i].playkeys = player[i].newkeys = player[i].releasekeys = 0;
@@ -18459,16 +19087,39 @@ entity *spawn(float x, float z, float a, e_direction direction, char *name, int 
     float *ofs;
     Varlist *vars;
     s_scripts *scripts;
+    int count_frames = 0;
+    s_anim *anim = NULL;
 
     if(!model)
     {
+        if(index < 0 && name)
+        {
+          index = get_cached_model_index(name);
+        }
         if(index >= 0)
         {
-            model = model_cache[index].model;
-        }
-        else if(name)
-        {
-            model = findmodel(name);
+          model = model_cache[index].model;
+          if(!model)
+          {
+            model = load_cached_model(model_cache[index].name, "spawn", 3, false);
+            if(model)
+            {
+              count_frames = 0;
+              for(i = 0; i < max_animations; ++i)
+              {
+                anim = model->animation[i];
+                if(anim)
+                {
+                  count_frames += anim->numframes;
+                }
+              }
+              if(count_frames > 10 && model->type != TYPE_PLAYER && model->type != TYPE_TEXTBOX)
+              {
+                update_model_loadflag(model, 0);
+                printf("Locked in memory model %s with %d frames\n", model->name, count_frames);
+              }
+            }
+          }
         }
     }
 
@@ -19985,7 +20636,11 @@ entity *spawn_attack_flash(entity *ent, s_collision_attack *attack, int attack_f
 
 	// Flash disabled by attack?
 	// We're done. Do nothing and exit.
-	if (attack->no_flash)
+	if (self->modeldata.flashoverridesource >= 0 && self->modeldata.flashoverridesource == attack->hitflash)
+    {
+        flash = spawn(lasthit.position.x, lasthit.position.z, lasthit.position.y, 0, NULL, self->modeldata.flashoverridetarget, NULL);
+    }
+    else if (attack->no_flash)
 	{
 		return NULL;
 	}
@@ -20098,6 +20753,7 @@ void do_attack(entity *e)
             new_attack_id = 1;
         }
         e->attack_id_outgoing = current_attack_id = new_attack_id;
+	//printf("Attack_id %d \n", new_attack_id); //TAG_YO
     }
 
 
@@ -20185,22 +20841,10 @@ void do_attack(entity *e)
         }
 
         // Attack IDs must be different.
-        if(!multihitcheat){
-
-			// Kratus (20-04-21) multihit disabled
-			if((target->attack_id_incoming == current_attack_id || target->attack_id_incoming2 == current_attack_id || target->attack_id_incoming3 == current_attack_id || target->attack_id_incoming4 == current_attack_id ) && !attack->ignore_attack_id)
-			{
-				continue;
-			}
-		}
-		else
-		{
-			// Kratus (20-04-21) multihit enabled
-			if(target->attack_id_incoming == current_attack_id && !attack->ignore_attack_id)
-			{
-				continue;
-			}
-		}
+        if(!attack->ignore_attack_id && check_attack_id_incoming(target, current_attack_id))
+        {
+            continue;
+        }
 
 		// Target laying down? Exit if
         // attack only hits standing targets.
@@ -20297,7 +20941,7 @@ void do_attack(entity *e)
                 self->toexplode |= EXPLODE_DETONATE;
             }
            
-            if(e->toexplode & EXPLODE_PREPARED)
+            if(e->toexplode & EXPLODE_PREPARED && !e->modeldata.noexplode)
             {
                 e->toexplode |= EXPLODE_DETONATE;
             }
@@ -20366,12 +21010,9 @@ void do_attack(entity *e)
                             self->modeldata.animation[current_follow_id]->attackone = self->animation->attackone;
                         }
                         ent_set_anim(self, current_follow_id, 0);
-
-                        // Kratus (20-04-21) used by the multihit glitch memorization
-                        self->attack_id_incoming4 = self->attack_id_incoming3;
-                        self->attack_id_incoming3 = self->attack_id_incoming2;
-                        self->attack_id_incoming2 = self->attack_id_incoming;
-                        self->attack_id_incoming = current_attack_id;
+                        
+                        // memorize current attack ID to ignore future attacks with same ID 
+                        insert_attack_id_incoming(self, current_attack_id);
                     }
 
                     // Flash spawn.
@@ -20450,16 +21091,11 @@ void do_attack(entity *e)
                     ent_set_anim(e, current_follow_id, 1);          // Then go to it!
                 }
                 //followed = 1; // quit loop, animation is changed
-            }
-
-            // Kratus (20-04-21) used by the multihit glitch memorization
-            self->attack_id_incoming4 = self->attack_id_incoming3;
-            self->attack_id_incoming3 = self->attack_id_incoming2;
-            self->attack_id_incoming2 = self->attack_id_incoming;
-            self->attack_id_incoming = current_attack_id;
+            }//end of if #055
             
-			// If hit, stop blocking.
-			if(self == def)
+            // memorize current attack ID to ignore future attacks with same ID 
+            insert_attack_id_incoming(self, current_attack_id);
+            if(self == def)
             {
                 self->blocking = didblock;   
             }
@@ -20636,6 +21272,44 @@ void do_attack(entity *e)
 #undef followed
 }
 
+void insert_attack_id_incoming(entity *e,  unsigned int attack_id_incoming)
+{
+    ++e->attack_id_incoming_index;
+    if(e->attack_id_incoming_index >= MAX_ATTACK_IDS)
+    {
+        e->attack_id_incoming_index = 0;
+    }
+    e->attack_id_incoming[e->attack_id_incoming_index] = attack_id_incoming;
+}
+
+int check_attack_id_incoming(entity *e,  unsigned int attack_id_incoming)
+{
+    int index = e->attack_id_incoming_index;
+    
+    int max_attack_id_to_check = MAX_ATTACK_IDS;
+    if(multihitcheat) {
+        max_attack_id_to_check = 1;
+    }
+
+    for (int i = 0 ; i < max_attack_id_to_check; ++i)
+    {
+        if(e->attack_id_incoming[index] == attack_id_incoming)
+        {
+            return 1;
+        }
+        else if(e->attack_id_incoming[index] == 0)
+        {
+            break;
+        }
+        --index;
+        if(index < 0)
+        {
+            index = max_attack_id_to_check - 1;
+        }
+    }
+
+    return 0;
+}
 
 // it can be useful for next changes
 /*static int is_obstacle_around(entity* ent, float threshold)
@@ -21190,6 +21864,13 @@ void adjust_base(entity *e, entity **pla)
     else
     {
         *pla = other = self->landed_on_platform = NULL;
+    }
+
+    // Avoid base adjustement in projectiles when the platform detected is marked to be ignored
+    if((self->spawntype == SPAWN_TYPE_PROJECTILE_NORMAL || self->spawntype == SPAWN_TYPE_PROJECTILE_BOMB) &&
+    other && (other->modeldata.ignore_projectile_wall_collision || other->modeldata.type == TYPE_OBSTACLE))
+    {
+        return;
     }
 
     if(other && !(other->update_mark & UPDATE_MARK_CHECK_GRAVITY))
@@ -23214,7 +23895,13 @@ int set_riseattack(entity *iRiseattack, int type, int reset)
     {
         type = 0;
     }
-
+    if( (!validanim(iRiseattack, animriseattacks[type]) ||
+        (iRiseattack->inbackpain && !validanim(iRiseattack, animbackriseattacks[type]) && !validanim(iRiseattack, animriseattacks[type]))) &&
+       iRiseattack->modeldata.riseattacktype == 3 )
+    {
+        return 0;
+    }
+    
     if ( iRiseattack->inbackpain ) riseattack = animbackriseattacks[type];
     else riseattack = animriseattacks[type];
 
@@ -23252,6 +23939,7 @@ int set_riseattack(entity *iRiseattack, int type, int reset)
     iRiseattack->rising &= ~RISING_RISE;
     iRiseattack->rising |= RISING_ATTACK;
     iRiseattack->drop = 0;
+    iRiseattack->projectile = 0; //TAG_YO, agregado para evitar el bug que cuando el enemigo haga un riseattack siga siendo considerado un proyectil.
     iRiseattack->nograb = iRiseattack->nograb_default; //iRiseattack->nograb = 0;
     iRiseattack->modeldata.jugglepoints.current = iRiseattack->modeldata.jugglepoints.max; //reset jugglepoints
     return 1;
@@ -23466,10 +24154,18 @@ void set_model_ex(entity *ent, char *modelname, int index, s_model *newmodel, in
         if(index >= 0)
         {
             newmodel = model_cache[index].model;
+            if (!newmodel)
+            {
+              newmodel = load_cached_model(model_cache[index].name, "change_model", 3, false);
+            }
         }
         else
         {
             newmodel = findmodel(modelname);
+            if (!newmodel)
+            {
+              newmodel = load_cached_model(modelname, "change_model", 3, false);
+            }
         }
     }
     if(!newmodel)
@@ -24729,11 +25425,11 @@ entity *drop_item(entity *e)
         }
         if(!(level->scrolldir & (SCROLL_UP | SCROLL_DOWN)))
         {
-            if(item->position.z - item->position.y < advancey)
+            if(item->position.z < advancey)
             {
                 item->position.z = advancey + 10;
             }
-            else if(item->position.z - item->position.y > advancey + videomodes.vRes)
+            else if(item->position.z > advancey + videomodes.vRes)
             {
                 item->position.z = advancey + videomodes.vRes - 10;
             }
@@ -24845,7 +25541,28 @@ void checkdeath()
 
 void checkdamageflip(entity *other, s_collision_attack *attack)
 {
+    e_direction_adjust force_direction = DIRECTION_ADJUST_NONE;
     self->normaldamageflipdir = -1;
+
+    if(other && attack)
+    {
+        force_direction =  attack->force_direction;
+
+        // if override is set use next value instead of the attack value
+        if(other->override_next_force_direction > 0)
+        {
+            force_direction = other->next_force_direction;
+
+            // disable override if it was set to only override once
+            if(other->override_next_force_direction == 1)
+            {
+                other->override_next_force_direction = 0;
+            }
+        }
+
+        // save used force_direction for next time
+        other->next_force_direction = force_direction;
+    }
 
     if(other == NULL || other == self || (!self->drop && (attack->no_pain || self->modeldata.nopain || (self->defense[attack->attack_type].pain && attack->attack_force < self->defense[attack->attack_type].pain))))
     {
@@ -24854,7 +25571,7 @@ void checkdamageflip(entity *other, s_collision_attack *attack)
 
     if(!self->frozen && !self->modeldata.noflip)// && !inair(self))
     {
-        switch(attack->force_direction)
+        switch(force_direction)
         {
             case DIRECTION_ADJUST_NONE:
                 if( !self->inbackpain )
@@ -25643,7 +26360,7 @@ int common_try_runattack(entity *target)
 
     if(target)
     {
-        if(!target->animation->vulnerable[target->animpos] && (target->drop || target->attacking != ATTACKING_NONE))
+        if(!target->animation->vulnerable[target->animpos] && (target->drop || target->attacking))
         {
             return 0;
         }
@@ -25697,7 +26414,7 @@ int common_try_block(entity *target)
 	}
 
     // If target is attacking, let's block and return true.
-    if(target->attacking != ATTACKING_NONE)
+    if(target->attacking)
     {
 		// Set up flags, action, and blocking animations.
 		do_active_block(self);
@@ -26279,6 +26996,7 @@ int adjust_grabposition(entity *ent, entity *other, float dist, int grabin)
 	float x2;
 	float z2;
 	float x;
+    int ent_testmove, other_testmove;
 
     if(diff(ent->position.y,other->position.y) > T_WALKOFF)
     {
@@ -26304,9 +27022,34 @@ int adjust_grabposition(entity *ent, entity *other, float dist, int grabin)
         z1 = z2 = (ent->position.z + other->position.z) / 2;
     }
 
-    if(0 >= testmove(ent, ent->position.x, ent->position.z, x1, z1) || 0 >= testmove(other, other->position.x, other->position.z, x2, z2))
+    other_testmove = testmove(other, other->position.x, other->position.z, x2, z2);
+    // If it is not possible to move the opponent we try to move only the attacker
+    if(other_testmove <= 0)
     {
-        return 0;
+        x1 = other->position.x + ((ent->position.x >= other->position.x) ? dist : -dist);
+        x2 = other->position.x;
+        z1 = z2 = other->position.z;
+        ent_testmove = testmove(ent, ent->position.x, ent->position.z, x1, z1);
+        if(ent_testmove <= 0)
+        {
+            return 0;
+        }
+    }
+    else
+    {
+        ent_testmove = testmove(ent, ent->position.x, ent->position.z, x1, z1);
+        // If it is not possible to move the attacker we try to move only the opponent
+        if(ent_testmove <= 0)
+        {
+            x1 = ent->position.x;
+            x2 = ent->position.x + ((other->position.x > ent->position.x) ? dist : -dist);
+            z1 = z2 = ent->position.z;
+            other_testmove = testmove(other, other->position.x, other->position.z, x2, z2);
+            if(other_testmove <= 0)
+            {
+                return 0;
+            }
+        }
     }
 
     ent->position.x = x1;
@@ -28680,7 +29423,10 @@ int arrow_move()
     if(level)
     {
         // Bounce off walls or platforms.
-        projectile_wall_deflect(self);
+        // projectile_wall_deflect(self);
+
+        // Destroy projectile when colliding with a wall
+        check_projectile_wall_collision(self);
     }
 
     if(self->projectile_prime & PROJECTILE_PRIME_BASE_FLOOR)
@@ -28755,6 +29501,12 @@ entity *check_block_obstacle(entity *ent)
         // height of the entity's top edge.
         height += ent->position.y;
 
+        // Clamp height
+        if(height < 0)
+        {
+            height = 0;
+        }
+
         // Find obstacle at entitiy's position (if any).
         obstacle = check_platform_between(ent->position.x, ent->position.z, ent->position.y, height, ent);
     }
@@ -28773,7 +29525,8 @@ int projectile_wall_deflect(entity *ent)
     #define RICHOCHET_VELOCITY_X_FACTOR 0.25    // This value is multiplied by current velocity to get an X velocity value to bounce off wall..
     #define RICHOCHET_VELOCITY_Y        2.5     // Base Y velocity applied when projectile bounces off wall.
     #define RICHOCHET_VELOCITY_Y_RAND   1       // Random seed for Y variance added to base Y velocity when bouncing off wall.
-
+    //He borrado todo el sistema de rebote para evitar el bug que destruye los misiles cuando se genera una caja de colisión dentro de una plataforma.
+/*
     float richochet_velocity_x;
     s_collision_attack attack;
 
@@ -28813,7 +29566,7 @@ int projectile_wall_deflect(entity *ent)
             return 1;
         }
     }
-
+*/
     // Did not ricochet, so return false.
     return 0;
 
@@ -28821,6 +29574,172 @@ int projectile_wall_deflect(entity *ent)
     #undef RICHOCHET_VELOCITY_X_FACTOR
     #undef RICHOCHET_VELOCITY_Y
     #undef RICHOCHET_VELOCITY_Y_RAND
+}
+
+// Returns 1 on wall collision. 0 otherwise.
+int check_projectile_wall_collision(entity *ent)
+{
+    int blocking_wall;
+    entity *blocking_obstacle = NULL;
+    s_collision_attack *attack = NULL;
+    int attack_min_y = 0;
+    int attack_max_y = 0;
+    int hit_pos_x = 0;
+    int hit_pos_y = 0;
+    int hit_pos_z = 0;
+    bool use_attack_anim = true;
+
+    // skip if the projectile is forced to ignore wall collisions
+    if(ent->modeldata.ignore_projectile_wall_collision || ent->hitwall)
+    {
+       return 0; 
+    }
+
+    // skip if there is no attack collider enabled
+    if(ent->animation &&
+        ent->animation->collision_attack &&
+        ent->animation->collision_attack[ent->animpos] &&
+        ent->animation->collision_attack[ent->animpos]->instance)
+    {
+        attack = ent->animation->collision_attack[ent->animpos]->instance[0];
+    }
+    else
+    {
+        return 0;
+    }
+
+    // Calculate attack collider min and max height positions
+    attack_min_y = ent->position.y - attack->coords->height;
+    attack_max_y = ent->position.y - attack->coords->y;
+
+    blocking_wall = check_block_wall(self);
+    if(blocking_wall >= 0)
+    {
+        // Check wall height
+        if(attack_min_y > level->walls[blocking_wall].height)
+        {
+            blocking_wall = -1;
+        }
+
+         // Some walls should be ignored
+        if(blocking_wall >= 0 && level->walls[blocking_wall].ignore_projectile_wall_collision)
+        {
+            blocking_wall = -1;
+        }
+    }
+
+    if(blocking_wall < 0)
+    {
+        blocking_obstacle = check_block_obstacle(self);
+
+        if(blocking_obstacle)
+        {
+            // Check obstacle height
+            if(attack_max_y < blocking_obstacle->position.y ||
+            attack_min_y > blocking_obstacle->position.y + blocking_obstacle->animation->platform[blocking_obstacle->animpos][PLATFORM_HEIGHT])
+            {
+                blocking_obstacle = NULL;
+            }
+
+            // Some obstacles should be ignored
+            if(blocking_obstacle &&
+            (blocking_obstacle->modeldata.ignore_projectile_wall_collision || blocking_obstacle->modeldata.type == TYPE_OBSTACLE))
+            {
+                blocking_obstacle = NULL;
+            }
+        }        
+    }
+
+    if(blocking_wall >= 0 || blocking_obstacle)
+    {
+        // disable next wall collision checks for this entity
+        ent->hitwall = 1;
+
+        // The following code is copying the projectile behavior when its attack hits a target
+
+        if(ent->pausetime < _time || (inair(ent) && !equalairpause))        // if equalairpause is set, inair(e) is nolonger a condition for extra pausetime
+        {
+            // Adds pause to the current animation
+            ent->toss_time += attack->pause_add;      // So jump height pauses in midair
+            ent->nextmove += attack->pause_add;      // xdir, zdir
+            ent->nextanim += attack->pause_add;       //Pause animation for a bit
+            ent->nextthink += attack->pause_add;      // So anything that auto moves will pause
+            ent->pausetime = _time + attack->pause_add ; //UT: temporary solution
+        }
+
+        // farthest attack collider margin
+        if(ent->direction == DIRECTION_LEFT)
+        {
+            hit_pos_x = ent->position.x - attack->coords->width;
+        }
+        else
+        {
+            hit_pos_x = ent->position.x + attack->coords->width;
+        }
+        hit_pos_y = (attack_min_y + attack_max_y) * 0.5; // middle attack collider height
+        hit_pos_y = hit_pos_y - 17; // sprite offset adjustment
+        hit_pos_z =  ent->position.z + 1; // changed so flashes always spawn in front
+
+        entity *flash = spawn(hit_pos_x, hit_pos_z, hit_pos_y, 0, NULL, 2, NULL);
+        if(flash)
+        {
+            flash->spawntype = SPAWN_TYPE_FLASH;
+            execute_onspawn_script(flash);
+            if(flash->modeldata.toflip)
+            {
+                flash->direction = (ent->direction == DIRECTION_LEFT);    // Now the flash will flip depending on which side the attacker is on
+            }
+            flash->base = hit_pos_y;
+            flash->autokill = 2;
+        }
+
+        // projectiles with a followup animation
+        if(ent->animation->followup.animation)
+        {
+            int current_follow_id = animfollows[ent->animation->followup.animation - 1];
+            if(validanim(ent, current_follow_id))
+            {
+                if(!ent->modeldata.animation[current_follow_id]->attackone)
+                {
+                    ent->modeldata.animation[current_follow_id]->attackone = ent->animation->attackone;
+                }
+                ent_set_anim(ent, current_follow_id, 1);          // Then go to it!
+                use_attack_anim = false; // if there is a folloup anim we don't need to use the attack anim
+            }
+        }
+        // bombs
+        if(ent->toexplode == 1)
+        {
+            ent->toexplode = 2;    // Used so the bomb type entity explodes when hitting
+            use_attack_anim = false; // attack anim will be set during bomb_move
+        }
+
+        if(use_attack_anim)
+        {
+            if(validanim(ent, ANI_ATTACK2))
+            {
+                ent_set_anim(ent, ANI_ATTACK2, 0);
+            }
+            else if (validanim(ent, ANI_ATTACK1))
+            {
+                ent_set_anim(ent, ANI_ATTACK1, 0);
+            }
+        }
+
+        // play a block sound
+        sound_play_sample(SAMPLE_BLOCK, 0, savedata.effectvol, savedata.effectvol, 100);
+        
+        // if the projectile is configured to be removed on attack, kill it immediately
+        if(ent->autokill & AUTOKILL_ATTACK_HIT)
+        {
+            kill_entity(ent);
+        }
+        
+        return 1;
+    }
+    
+    // Did not collide, so return false.
+    return 0;
 }
 
 // Caskey, Damon V.
@@ -28884,6 +29803,13 @@ int bomb_move()
             ent_set_anim(self, ANI_ATTACK1, 0);
         }
     }
+
+    if(level)
+    {
+        // Destroy projectile when colliding with a wall
+        check_projectile_wall_collision(self);
+    }
+
     return 1;
 }
 
@@ -28910,7 +29836,7 @@ int star_move()
             self->animating = ANIMATING_NONE;
         }
     }
-
+	
     return 1;
 }
 
@@ -33358,13 +34284,19 @@ int is_incam(float x, float z, float a, float threshold)
 void spawnplayer(int index)
 {
     s_spawn_entry p;
-    //s_model * model = NULL;
+    s_model *model = NULL;
     int wall;
     int xc, zc, find = 0;
     index &= 3;
 
 //    model = find_model(player[index].name);
 //    if(model == NULL) return;
+    model = findmodel(player[index].name);
+    if(model && model->quickload)
+    {
+      unload_model(model);
+      load_cached_model(player[index].name, "spawn_player", 3, false);
+    }
 
     memset(&p, 0, sizeof(p));
     p.name = player[index].name;
@@ -34582,6 +35514,24 @@ void inputrefresh(int playrecmode)
 
 }
 
+int allow_default_keys()
+{
+    int allowed = 0;
+
+    // allow default keys if not playing a level and not in select screen
+    if (level == NULL)
+    {
+        allowed = !selectScreen;
+    }
+    // during levels only allow default keys in pause
+    else
+    {
+       allowed = _pause;
+    }
+
+    return allowed;
+}
+
 void execute_keyscripts()
 {
     int p;
@@ -35317,7 +36267,7 @@ void apply_controls()
         control_setkey(playercontrolpointers[p], FLAG_JUMP,       savedata.keys[p][SDID_JUMP]);
         control_setkey(playercontrolpointers[p], FLAG_SPECIAL,    savedata.keys[p][SDID_SPECIAL]);
         control_setkey(playercontrolpointers[p], FLAG_START,      savedata.keys[p][SDID_START]);
-        control_setkey(playercontrolpointers[p], FLAG_SCREENSHOT, savedata.keys[p][SDID_SCREENSHOT]);
+        if (p==0){ control_setkey(playercontrolpointers[p], FLAG_SCREENSHOT, savedata.keys[p][SDID_SCREENSHOT]);}
     }
 }
 
@@ -35737,7 +36687,6 @@ void startup()
 #endif
 
     ob_inittrans();
-    loadHighScoreFile();
     clearSavedGame();
 
     init_videomodes(1);
@@ -36052,7 +37001,7 @@ void playscene(char *filename)
                 skipone = GET_INT_ARG(4);
                 noskip = GET_INT_ARG(5);
                 status = playgif(videofile, x, y, noskip);
-                if(status == -1 && !skipone)
+                if((status == -1 && !skipone) || (bothnewkeys & FLAG_ESC))
                 {
                     closing = 1;
                 }
@@ -36175,30 +37124,175 @@ void hallfame(int addtoscore)
         }
     }
 
-    if(addtoscore)
+    // if there are no savescore modes we use the old savescore system
+    if(!savescore_modes)
     {
-        for(p = 0; p < levelsets[current_set].maxplayers; p++)
+        if(addtoscore)
         {
-            if(player[p].score > savescore.highsc[9])
+            for(p = 0; p < levelsets[current_set].maxplayers; p++)
             {
-                savescore.highsc[9] = player[p].score;
-                strcpy(savescore.hscoren[9], player[p].name);
-                topten[9] = 1;
-
-                for(i = 8; i >= 0 && player[p].score > savescore.highsc[i]; i--)
+                if(player[p].score > savescore.highsc[9])
                 {
-                    score = savescore.highsc[i];
-                    strcpy(name, savescore.hscoren[i]);
-                    savescore.highsc[i] = player[p].score;
-                    strcpy(savescore.hscoren[i], player[p].name);
-                    topten[i] = 1;
-                    savescore.highsc[i + 1] = score;
-                    strcpy(savescore.hscoren[i + 1], name);
-                    topten[i + 1] = 0;
+                    savescore.highsc[9] = player[p].score;
+                    strcpy(savescore.hscoren[9], player[p].name);
+                    topten[9] = 1;
+
+                    for(i = 8; i >= 0 && player[p].score > savescore.highsc[i]; i--)
+                    {
+                        score = savescore.highsc[i];
+                        strcpy(name, savescore.hscoren[i]);
+                        savescore.highsc[i] = player[p].score;
+                        strcpy(savescore.hscoren[i], player[p].name);
+                        topten[i] = 1;
+                        savescore.highsc[i + 1] = score;
+                        strcpy(savescore.hscoren[i + 1], name);
+                        topten[i + 1] = 0;
+                    }
                 }
             }
+            saveHighScoreFile();
         }
-        saveHighScoreFile();
+
+        _time = 0;
+
+        while(!done)
+        {
+            y = 56;
+            if(!hiscorebg)
+            {
+                font_printf(_strmidx(3, Tr("Hall Of Fame")), y - fontheight(3) - 10 + videomodes.vShift, 3, 0, Tr("Hall Of Fame"));
+            }
+
+            for(i = 0; i < 10; i++)
+            {
+                font_printf(_colx(topten[i], col1), y + videomodes.vShift, topten[i], 0, "%2i.  %s", i + 1, savescore.hscoren[i]);
+                font_printf(_colx(topten[i], col2), y + videomodes.vShift, topten[i], 0, (scoreformat ? "%09lu" : "%u"), savescore.highsc[i]);
+                y += (videomodes.vRes - videomodes.vShift - 56 - 32) / 10; //font_heights[topten[i]] + 6;
+            }
+
+            update(0, 0);
+            done |= (_time > GAME_SPEED * 8);
+            done |= (bothnewkeys & (FLAG_START + FLAG_ESC));
+        }
+    }
+    else
+    {
+        if(addtoscore)
+        {
+            hallfame_add();
+        }
+        else
+        {
+            hallfame_show();
+        }
+    }
+
+    unload_background();
+    hallOfFame = 0;
+}
+
+void hallfame_add()
+{
+    int done = 0;
+    bool allow_skip = true;
+    bool all_players_done = true;
+    int p, y;
+    int col1 = -14;
+    int col2 = 11;
+
+    int new_record_player[10];
+    int player_ranking_pos[MAX_PLAYERS];
+    int player_initials[MAX_PLAYERS][NUM_INITIALS];
+    int player_initial_index[MAX_PLAYERS];
+    s_savescore *savescore_mode = NULL;
+    int difficulty = 0;
+    int time_limit = savescore_min_time;
+
+    // initializations
+    memset(new_record_player, -1, sizeof(int) * 10);
+    memset(player_ranking_pos, -1, sizeof(int) * MAX_PLAYERS);
+    memset(player_initials, 0, sizeof(int) * MAX_PLAYERS * NUM_INITIALS);
+    memset(player_initial_index, 0, sizeof(int) * MAX_PLAYERS);
+
+    // get current difficulty
+    if(List_FindByName(global_var_list.list, savescore_difficulty_variable))
+    {
+        ScriptVariant *var = (ScriptVariant *)List_Retrieve(global_var_list.list);
+        if(var->vt == VT_INTEGER)
+        {
+            difficulty = var->lVal;
+        }
+    }
+
+    // check if it is a valid mode and difficulty
+    if(difficulty < savescore_difficulty_count && levelsets[current_set].savescore)
+    {
+        savescore_mode = &levelsets[current_set].savescore[difficulty];
+    }
+    if(!savescore_mode || savescore_mode->compatibleversion != CV_HIGH_SCORE)
+    {
+        return;
+    }
+
+    // only enter record if gameover or finished game
+    bool isFinished = (current_level >= levelsets[current_set].numlevels);
+    bool isGameOver = true;
+    for(p = 0; p < MAX_PLAYERS; ++p)
+    {
+        if(player[p].ent)
+        {
+            isGameOver = false;
+            break;
+        }
+    }
+
+    if(isFinished || isGameOver)
+    {
+        // insert each player score in the correct table position
+        for(p = 0; p < MAX_PLAYERS; ++p)
+        {
+            bool isAlive = player[p].ent;
+            bool is1CC = isFinished && isAlive && noshare && (player[p].credits == savescore_mode->credits - 1);
+            char initials[NUM_INITIALS];
+            for(int initial_index = 0; initial_index < NUM_INITIALS; ++initial_index)
+            {
+                int initial = player_initials[p][initial_index];
+                initials[initial_index] = (savescore_initials ? savescore_initials : savescore_initials_default)[initial];
+            }
+            for(int table_pos = 9; table_pos >= 0 && player[p].score > savescore_mode->highsc[table_pos]; --table_pos)
+            {
+                // if there is a new record give some time to enter initials
+                allow_skip = false;
+                all_players_done = false;
+                time_limit = savescore_max_time;
+                
+                // if not the last row we move the info one row below
+                if(table_pos < 9)
+                {
+                    savescore_mode->highsc[table_pos + 1] = savescore_mode->highsc[table_pos];
+                    strcpy(savescore_mode->hscoren[table_pos + 1], savescore_mode->hscoren[table_pos]);
+                    memcpy(savescore_mode->hscorei[table_pos + 1], savescore_mode->hscorei[table_pos], sizeof(char) * NUM_INITIALS);
+                    savescore_mode->is1CC[table_pos + 1] = savescore_mode->is1CC[table_pos];
+                    new_record_player[table_pos + 1] = new_record_player[table_pos];
+                }
+
+                // move other player positions in table if necessary
+                if(new_record_player[table_pos] >= 0)
+                {
+                    player_ranking_pos[new_record_player[table_pos]] = table_pos + 1;
+                }
+
+                // copy player info to the current row
+                savescore_mode->highsc[table_pos] = player[p].score;
+                strcpy(savescore_mode->hscoren[table_pos], player[p].name);
+                memcpy(savescore_mode->hscorei[table_pos], initials, sizeof(char) * NUM_INITIALS);
+                savescore_mode->is1CC[table_pos] = is1CC;
+                new_record_player[table_pos] = p;
+
+                // save current player position in table
+                player_ranking_pos[p] = table_pos;
+            }
+        }
     }
 
     _time = 0;
@@ -36211,23 +37305,273 @@ void hallfame(int addtoscore)
             font_printf(_strmidx(3, Tr("Hall Of Fame")), y - fontheight(3) - 10 + videomodes.vShift, 3, 0, Tr("Hall Of Fame"));
         }
 
-        for(i = 0; i < 10; i++)
+        // mode and difficulty
+        _menutextm(0, -10, 0, "%s", levelsets[current_set].name);
+        _menutextm(0, -9, 0, "%s", savescore_difficulty_names[difficulty]);
+        
+        for(int i = 0; i < 10; i++)
         {
-            font_printf(_colx(topten[i], col1), y + videomodes.vShift, topten[i], 0, "%2i.  %s", i + 1, savescore.hscoren[i]);
-            font_printf(_colx(topten[i], col2), y + videomodes.vShift, topten[i], 0, (scoreformat ? "%09lu" : "%u"), savescore.highsc[i]);
+            int player = new_record_player[i];
+            int highlighted_line = player >= 0;
+            
+            // player number
+            if(highlighted_line)
+            {
+                font_printf(_colx(highlighted_line, col1 - 2), y + videomodes.vShift, highlighted_line, 0, "P%d", player + 1);
+            }
+
+            // rank position
+            font_printf(_colx(highlighted_line, col1), y + videomodes.vShift, highlighted_line, 0, "%2i.", i + 1);
+
+            // initials
+            int initial_colx = _colx(0, col1 + 2);
+            int initial_extra_separation = font_string_width(0, "[");
+            for(int initial_index = 0; initial_index < NUM_INITIALS; ++initial_index)
+            {
+                int selected_initial = highlighted_line && player_initial_index[player] == initial_index;
+                int highlighted_initial = highlighted_line && !selected_initial;
+                if(selected_initial)
+                {
+                    font_printf(initial_colx - initial_extra_separation, y + videomodes.vShift, 0, 0, "[");
+                }
+                font_printf(initial_colx, y + videomodes.vShift, highlighted_initial, 0, "%c", savescore_mode->hscorei[i][initial_index]);
+                if(selected_initial)
+                {
+                    font_printf(initial_colx + fontmonowidth(0), y + videomodes.vShift, 0, 0, "]");
+                }
+                initial_colx += fontmonowidth(0) + initial_extra_separation;
+            }
+
+            // name
+            font_printf(_colx(highlighted_line, col1 + 7), y + videomodes.vShift, highlighted_line, 0, "%s", savescore_mode->hscoren[i]);
+
+            // score
+            int score_width = font_string_width(highlighted_line, (scoreformat ? "%09lu" : "%u"), savescore_mode->highsc[i]);
+            font_printf(_colx(highlighted_line, col2) - score_width, y + videomodes.vShift, highlighted_line, 0, (scoreformat ? "%09lu" : "%u"), savescore_mode->highsc[i]);
+            
+            // 1CC
+            if(savescore_mode->is1CC[i])
+            {
+                font_printf(_colx(highlighted_line, col2 + 1), y + videomodes.vShift, highlighted_line, 0, "1CC");
+            }
             y += (videomodes.vRes - videomodes.vShift - 56 - 32) / 10; //font_heights[topten[i]] + 6;
         }
 
         update(0, 0);
-        done |= (_time > GAME_SPEED * 8);
-        done |= (bothnewkeys & (FLAG_START + FLAG_ESC));
+        
+        // check elapsed time
+        done |= (_time > GAME_SPEED * time_limit);
+        // check skip
+        done |= allow_skip && (bothnewkeys & (FLAG_START | FLAG_ESC));
+        
+        if(!all_players_done)
+        {
+            all_players_done = true;
+
+            // process player inputs
+            for(p = 0; p < levelsets[current_set].maxplayers; ++p)
+            {   
+                int ranking_pos = player_ranking_pos[p];
+                int *initial_index = &player_initial_index[p];
+                int *initial = &player_initials[p][*initial_index];
+                // check if in rank and not already done
+                if(ranking_pos >= 0 && *initial_index < NUM_INITIALS)
+                {
+                    // previous character
+                    if(player[p].newkeys & FLAG_MOVEDOWN)
+                    {
+                        sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+                        --*initial;
+                        if(*initial < 0)
+                        {
+                            *initial = strlen(savescore_initials ? savescore_initials : savescore_initials_default) - 1;
+                        }
+                    }
+                    // next character
+                    else if(player[p].newkeys & FLAG_MOVEUP)
+                    {
+                        sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+                        ++*initial;
+                        if(*initial > strlen(savescore_initials ? savescore_initials : savescore_initials_default) - 1)
+                        {
+                            *initial = 0;
+                        }
+                    }
+                    // previous initial
+                    else if(player[p].newkeys & FLAG_MOVELEFT)
+                    {
+                        sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+                        --*initial_index;
+                        if(*initial_index < 0)
+                        {
+                            *initial_index = 0;
+                        }
+                    }
+                    // next initial
+                    else if(player[p].newkeys & (FLAG_MOVERIGHT | FLAG_ATTACK))
+                    {
+                        if((*initial_index < NUM_INITIALS - 1) || (player[p].newkeys & FLAG_ATTACK))
+                        {
+                            sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+                            ++*initial_index;
+                        }
+                    }
+                    // done
+                    else if(player[p].newkeys & FLAG_START)
+                    {
+                        sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+                        *initial_index = NUM_INITIALS;
+                    }
+
+                    // update status
+                    if(*initial_index < NUM_INITIALS)
+                    {
+                        initial = &player_initials[p][*initial_index];
+                        savescore_mode->hscorei[ranking_pos][*initial_index] = (savescore_initials ? savescore_initials : savescore_initials_default)[*initial];
+                        all_players_done = false;
+                    }
+                }
+            }
+            // if all players are done give a few more seconds before exiting
+            if(all_players_done)
+            {
+                time_limit = (_time / GAME_SPEED) + savescore_extra_time;
+            }
+            // otherwise print remaining time
+            else
+            {
+                _menutextm(0, 10, 0, "Time: %02d", time_limit - (_time / GAME_SPEED));
+            }
+        }
     }
-    unload_background();
-    hallOfFame = 0;
+
+    saveHighScoreFile();
 }
 
+void hallfame_show()
+{
+    int done = 0;
+    int y;
+    int col1 = -14;
+    int col2 = 11;
 
+    s_savescore *savescore_mode = NULL;
+    bool selected_menu = 0;
+    int mode = 0;
+    int difficulty = 0;
+    
+    while(!done)
+    {
+        y = 56;
+        if(!hiscorebg)
+        {
+            font_printf(_strmidx(3, Tr("Hall Of Fame")), y - fontheight(3) - 10 + videomodes.vShift, 3, 0, Tr("Hall Of Fame"));
+        }
 
+        savescore_mode = &savescore_modes[mode * savescore_difficulty_count + difficulty];
+
+        // Mode selection
+        _menutextm((selected_menu ? 0 : 1), -10, 0, (selected_menu ? "%s" : "< %s >"), levelsets[savescore_mode->mode].name);
+
+        // Difficulty selection
+        _menutextm((selected_menu ? 1 : 0), -9, 0, (selected_menu ? "< %s >" : "%s"), savescore_difficulty_names[difficulty]);
+        
+        if(savescore_mode->compatibleversion == CV_HIGH_SCORE)
+        {
+            for(int i = 0; i < 10; i++)
+            {
+                // rank position
+                font_printf(_colx(0, col1), y + videomodes.vShift, 0, 0, "%2i.", i + 1);
+
+                // initials
+                int initial_colx = _colx(0, col1 + 2);
+                int initial_extra_separation = font_string_width(0, "[");
+                for(int initial_index = 0; initial_index < NUM_INITIALS; ++initial_index)
+                {
+                    font_printf(initial_colx, y + videomodes.vShift, 0, 0, "%c", savescore_mode->hscorei[i][initial_index]);
+                    initial_colx += fontmonowidth(0) + initial_extra_separation;
+                }
+
+                // name
+                font_printf(_colx(0, col1 + 7), y + videomodes.vShift, 0, 0, "%s", savescore_mode->hscoren[i]);
+
+                // score
+                int score_width = font_string_width(0, (scoreformat ? "%09lu" : "%u"), savescore_mode->highsc[i]);
+                font_printf(_colx(0, col2) - score_width, y + videomodes.vShift, 0, 0, (scoreformat ? "%09lu" : "%u"), savescore_mode->highsc[i]);
+                
+                // 1CC
+                if(savescore_mode->is1CC[i])
+                {
+                    font_printf(_colx(0, col2 + 1), y + videomodes.vShift, 0, 0, "1CC");
+                }
+                y += (videomodes.vRes - videomodes.vShift - 56 - 32) / 10; //font_heights[topten[i]] + 6;
+            }
+        }
+        else
+        {
+            _menutextm(0, -1, 0, "Not available");
+        }
+
+        update(0, 0);
+        
+        // check exit
+        done |= (bothnewkeys & (FLAG_ESC | FLAG_ANYBUTTON));
+
+        // process player inputs
+        if(bothnewkeys & FLAG_MOVELEFT)
+        {
+            sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+            // previous mode
+            if(!selected_menu)
+            {
+                --mode;
+            }
+            // previous difficulty
+            else
+            {
+                --difficulty;
+            }
+        }
+        else if(bothnewkeys & FLAG_MOVERIGHT)
+        {
+            sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+             // next mode
+            if(!selected_menu)
+            {
+                ++mode;
+            }
+            // next difficulty
+            else
+            {
+                ++difficulty;
+            }
+        }
+        // change menu item
+        if(bothnewkeys & (FLAG_MOVEUP | FLAG_MOVEDOWN))
+        {
+           sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+           selected_menu = !selected_menu;
+        }
+
+        // clamp values
+        if(mode >= savescore_modes_count)
+        {
+            mode = 0;
+        }
+        else if(mode < 0)
+        {
+            mode = savescore_modes_count - 1; 
+        }
+        if(difficulty >= savescore_difficulty_count)
+        {
+            difficulty = 0;
+        }
+        else if(difficulty < 0)
+        {
+            difficulty = savescore_difficulty_count - 1; 
+        }
+    }
+}
 
 // Level completed, show bonus stuff
 void showcomplete(int num)
@@ -36394,6 +37738,7 @@ void savelevelinfo()
     s_set_entry *set = levelsets + current_set;
     s_savelevel *save = savelevel + current_set;
 
+    save->compatibleversion = CV_SAVED_GAME;
     save->flag = set->saveflag;
     // don't check flag here save all info, for simple logic
     for(i = 0; i < set->maxplayers; i++)
@@ -36757,6 +38102,7 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 	for (i = 0; i < set->maxplayers; i++)
 	{
 		player[i].hasplayed = players[i];
+        if (player[i].hasplayed) strcpy(player[i].name, "dummy");
 	}
 
 	for (i = 0; i < set->maxplayers; i++)
@@ -36803,11 +38149,7 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 					tempmodel = findmodel(GET_ARG(1));
 					if (!tempmodel)
 					{
-						load_cached_model(GET_ARG(1), filename, GET_INT_ARG(2));
-					}
-					else
-					{
-						update_model_loadflag(tempmodel, GET_INT_ARG(2));
+						load_cached_model(GET_ARG(1), filename, 3, false);
 					}
 					// SAVE
 					if (load_count < MAX_SELECT_LOADS)
@@ -37268,6 +38610,10 @@ void playgame(int *players,  unsigned which_set, int useSavedGame)
         }
         current_level = save->level;
         current_stage = save->stage;
+        if ( current_level >= set->numlevels )
+        {
+            return;
+        }
         if(save->flag == 2) // don't check 1 or 0 becuase if we use saved game the flag must be >0
         {
             for(i = 0; i < set->maxplayers; i++)
@@ -37279,6 +38625,7 @@ void playgame(int *players,  unsigned which_set, int useSavedGame)
                 player[i].weapnum = save->pWeapnum[i];
                 player[i].spawnhealth = save->pSpawnhealth[i];
                 player[i].spawnmp = save->pSpawnmp[i];
+                player[i].hasplayed = players[i] = save->pName[i][0] ? 1 : 0;
                 strncpy(player[i].name, save->pName[i], MAX_NAME_LEN);
             }
             credits = save->credits;
@@ -37347,10 +38694,6 @@ void playgame(int *players,  unsigned which_set, int useSavedGame)
                     {
                         skipselect[i][0] = 0;
                     }
-                }
-                for(i = 0; i < set->maxplayers ; i++)
-                {
-                    players[i] = (player[i].lives > 0);
                 }
                 if(selectplayer(players, le->filename, useSavedGame) == 0)
                 {
@@ -37430,6 +38773,7 @@ void playgame(int *players,  unsigned which_set, int useSavedGame)
         if(current_level >= set->numlevels)
         {
             bonus += save->times_completed++;
+            save->level = current_level;
             saveGameFile();
             if(!nofadeout)
             {
@@ -37444,6 +38788,7 @@ void playgame(int *players,  unsigned which_set, int useSavedGame)
 
 endgame:
     // clear global script variant list
+    memset(player, 0, sizeof(*player) * 4);
     branch_name[0] = 0;
     sound_close_music();
 }
@@ -37452,7 +38797,8 @@ int menu_difficulty()
 {
     int quit = 0;
     int selector = 0;
-    int maxdisplay = 5;
+    int maxdisplay = 14; //TAG_YO cambiado el máximo de opciones que se puedes mostrar de forma simultanea en el menú de selección de modos
+    int init_menu_y = -5;
     int i, j, t;
     //float slider = 0;
     int barx, bary, barw, barh;
@@ -37472,7 +38818,7 @@ int menu_difficulty()
     {
         if(num_difficulties > 1)
         {
-            _menutextm(2, -2, 0, Tr("Game Mode"));
+            _menutextm(2, -5, 0, Tr("Game Mode"));
             t = (selector - (selector == num_difficulties)) / maxdisplay * maxdisplay;
             for(j = 0, i = t; i < maxdisplay + t && i < num_difficulties; j++, i++)
             {
@@ -37480,17 +38826,17 @@ int menu_difficulty()
                 {
                     if(bonus >= levelsets[i].ifcomplete)
                     {
-                        _menutextm((selector == i), j, 0, "%s", levelsets[i].name);
+                        _menutextm((selector == i), init_menu_y + j, 0, "%s", levelsets[i].name);
                     }
                     else
                     {
                         if(levelsets[i].ifcomplete > 1)
                         {
-                            _menutextm((selector == i), j, 0, Tr("%s - Finish Game %i Times To UnLock"), levelsets[i].name, levelsets[i].ifcomplete);
+                            _menutextm((selector == i), init_menu_y + j, 0, Tr("%s - Finish Game %i Times To UnLock"), levelsets[i].name, levelsets[i].ifcomplete);
                         }
                         else
                         {
-                            _menutextm((selector == i), j, 0, Tr("%s - Finish Game To UnLock"), levelsets[i].name);
+                            _menutextm((selector == i), init_menu_y + j, 0, Tr("%s - Finish Game To UnLock"), levelsets[i].name);
                         }
                     }
                 }
@@ -37499,7 +38845,7 @@ int menu_difficulty()
                     break;
                 }
             }
-            _menutextm((selector == i), 6, 0, Tr("Back"));
+            _menutextm((selector == i), init_menu_y + MIN(num_difficulties, maxdisplay) + 3, 0, Tr("Back"));
 
             //draw the scroll bar
             if(num_difficulties > maxdisplay)
@@ -37591,6 +38937,7 @@ int load_saved_game()
     int quit = 0;
     int selector = 0;
     int savedStatus = 0;
+    bool allow_load = true;
     char name[MAX_BUFFER_LEN] = {""};
     int col1 = -8, col2 = 6;
 
@@ -37633,27 +38980,46 @@ int load_saved_game()
             if(savedStatus)
             {
                 _menutext((selector == 0), col1, -1, Tr("Mode:"));
-                _menutext((selector == 0), col2, -1, "%s", savelevel[saveslot].dName);
-                _menutext(0, col1, 0, Tr("Stage:"));
-                _menutext(0, col2, 0, "%d", savelevel[saveslot].stage);
-                _menutext(0, col1, 1, Tr("Level:"));
-                _menutext(0, col2, 1, "%d", savelevel[saveslot].level);
-                _menutext(0, col1, 2, Tr("Credits:"));
 
-                if(noshare){
-                    _menutext(0, col2, 2, "%d/%d/%d/%d",
-                                  savelevel[saveslot].pCredits[0],
-                                  savelevel[saveslot].pCredits[1], savelevel[saveslot].pCredits[2],
-                                  savelevel[saveslot].pCredits[3]);
-                } else {
-                    _menutext(0, col2, 2, "%d", savelevel[saveslot].credits);
+                allow_load = true;
+                // Don't load finished saves
+                if(savelevel[saveslot].level >= levelsets[saveslot].numlevels)
+                {
+                    allow_load = false;
+                    _menutext(0, col2, -1, "%s", savelevel[saveslot].dName);
+                    _menutext(0, col2, 0, "(Finished)");
                 }
+                // Don't load saves with a different version
+                else if(savelevel[saveslot].compatibleversion != CV_SAVED_GAME)
+                {
+                    allow_load = false;
+                    _menutext(0, col2, -1, "%s", savelevel[saveslot].dName);
+                    _menutext(0, col2, 0, "(Not compatible)");
+                }
+                else
+                {
+                    _menutext((selector == 0), col2, -1, "%s", savelevel[saveslot].dName);
+                    _menutext(0, col1, 0, Tr("Stage:"));
+                    _menutext(0, col2, 0, "%d", savelevel[saveslot].stage);
+                    _menutext(0, col1, 1, Tr("Level:"));
+                    _menutext(0, col2, 1, "%d", savelevel[saveslot].level);
+                    _menutext(0, col1, 2, Tr("Credits:"));
 
-                _menutext(0, col1, 3, Tr("Player Lives:"));
-                _menutext(0, col2, 3, "%d/%d/%d/%d",
-                          savelevel[saveslot].pLives[0],
-                          savelevel[saveslot].pLives[1], savelevel[saveslot].pLives[2],
-                          savelevel[saveslot].pLives[3]);
+                    if(noshare){
+                        _menutext(0, col2, 2, "%d/%d/%d/%d",
+                                    savelevel[saveslot].pCredits[0],
+                                    savelevel[saveslot].pCredits[1], savelevel[saveslot].pCredits[2],
+                                    savelevel[saveslot].pCredits[3]);
+                    } else {
+                        _menutext(0, col2, 2, "%d", savelevel[saveslot].credits);
+                    }
+
+                    _menutext(0, col1, 3, Tr("Player Lives:"));
+                    _menutext(0, col2, 3, "%d/%d/%d/%d",
+                            savelevel[saveslot].pLives[0],
+                            savelevel[saveslot].pLives[1], savelevel[saveslot].pLives[2],
+                            savelevel[saveslot].pLives[3]);
+                }
             }
             _menutextm((selector == 1), 6, 0, Tr("Back"));
         }
@@ -37723,13 +39089,17 @@ int load_saved_game()
 
         if((bothnewkeys & FLAG_ANYBUTTON))
         {
-            sound_play_sample(SAMPLE_BEEP2, 0, savedata.effectvol, savedata.effectvol, 100);
             switch(selector)
             {
             case 0:
-                return saveslot;
+                if(allow_load)
+                {
+                    sound_play_sample(SAMPLE_BEEP2, 0, savedata.effectvol, savedata.effectvol, 100);
+                    return saveslot;
+                }
                 break;
             case 1:
+                sound_play_sample(SAMPLE_BEEP2, 0, savedata.effectvol, savedata.effectvol, 100);
                 quit = 1;
                 break;
             }
@@ -37752,7 +39122,7 @@ int choose_mode(int *players)
 
     while(!quit)
     {
-        _menutextm(2, 1, 0, Tr("Choose Mode"));
+        _menutextm(2, -5, 0, Tr("Choose Mode"));
         _menutextm((selector == 0), 3, 0, Tr("New Game"));
         _menutextm((selector == 1), 4, 0, Tr("Load Game"));
         _menutextm((selector == 2), 6, 0, Tr("Back"));
@@ -38247,7 +39617,7 @@ void keyboard_setup(int player)
     while(!quit)
     {
         voffset = -6;
-        _menutextm(2, -8, 0, Tr("Player %i"), player + 1);
+        _menutextm(2, -5, 0, Tr("Player %i"), player + 1);
         for(i = 0; i < btnnum; i++)
         {
             if(!disabledkey[i])
@@ -38325,6 +39695,7 @@ void keyboard_setup(int player)
             if(selector < 0)
             {
                 selector = OPTIONS_NUM;
+				//clear_lastjoy();
             }
             if(selector > OPTIONS_NUM)
             {
@@ -38413,7 +39784,7 @@ void menu_options_input()
 
     while(!quit)
     {
-        _menutextm(2, x_pos-1, 0, Tr("Control Options"));
+        _menutextm(2, -5, 0, Tr("Control Options"));
 
         #if PSP
         if(savedata.usejoy)
@@ -38523,16 +39894,16 @@ void menu_options_input()
 #endif
                 break;
             case 1:
-                keyboard_setup(0);
+                if( bothnewkeys & FLAG_ANYBUTTON) keyboard_setup(0);
                 break;
             case 2:
-                keyboard_setup(1);
+                if (bothnewkeys & FLAG_ANYBUTTON) keyboard_setup(1);
                 break;
             case 3:
-                keyboard_setup(2);
+                if (bothnewkeys & FLAG_ANYBUTTON) keyboard_setup(2);
                 break;
             case 4:
-                keyboard_setup(3);
+                if (bothnewkeys & FLAG_ANYBUTTON) keyboard_setup(3);
                 break;
             #if ANDROID
             case 5:
@@ -38686,7 +40057,7 @@ void menu_options_sound()
                 savedata.showtitles = !savedata.showtitles;
                 break;
             default:
-                quit = 1;
+                quit = (bothnewkeys & FLAG_ANYBUTTON);
             }
         }
     }
@@ -38774,46 +40145,48 @@ void menu_options_config()     //  OX. Load from / save to default.cfg. Restore 
 
         if(bothnewkeys & (FLAG_MOVELEFT | FLAG_MOVERIGHT | FLAG_ANYBUTTON))
         {
-
             if(SAMPLE_BEEP2 >= 0)
             {
                 sound_play_sample(SAMPLE_BEEP2, 0, savedata.effectvol, savedata.effectvol, 100);
             }
 
-            switch(selector)
+            if(bothnewkeys & FLAG_ANYBUTTON)
             {
-            case 0:
-                saveasdefault();
-                saved = 1;
-                break;
+                switch(selector)
+                {
+                case 0:
+                    saveasdefault();
+                    saved = 1;
+                    break;
 
-            case 1:
-                loadfromdefault();
-                //borShutdown(2, "\nSettings Loaded From Default.cfg. Restart Required.\n\n");
-                init_videomodes(0);
-                if(!video_set_mode(videomodes))
-                {
-                    borShutdown(1, "Unable to set video mode: %d x %d!\n", videomodes.hRes, videomodes.vRes);
+                case 1:
+                    loadfromdefault();
+                    //borShutdown(2, "\nSettings Loaded From Default.cfg. Restart Required.\n\n");
+                    init_videomodes(0);
+                    if(!video_set_mode(videomodes))
+                    {
+                        borShutdown(1, "Unable to set video mode: %d x %d!\n", videomodes.hRes, videomodes.vRes);
+                    }
+                    SB_setvolume(SB_VOICEVOL, savedata.soundvol);
+                    sound_volume_music(savedata.musicvol, savedata.musicvol);
+                    loaded = 1;
+                    break;
+                case 2:
+                    clearsettings();
+                    //borShutdown(2, "\nSettings Loaded From Default.cfg. Restart Required.\n\n");
+                    init_videomodes(0);
+                    if(!video_set_mode(videomodes))
+                    {
+                        borShutdown(1, "Unable to set video mode: %d x %d!\n", videomodes.hRes, videomodes.vRes);
+                    }
+                    SB_setvolume(SB_VOICEVOL, savedata.soundvol);
+                    sound_volume_music(savedata.musicvol, savedata.musicvol);
+                    restored = 1;
+                    break;
+                default:
+                    quit = 1;
                 }
-                SB_setvolume(SB_VOICEVOL, savedata.soundvol);
-                sound_volume_music(savedata.musicvol, savedata.musicvol);
-                loaded = 1;
-                break;
-            case 2:
-                clearsettings();
-                //borShutdown(2, "\nSettings Loaded From Default.cfg. Restart Required.\n\n");
-                init_videomodes(0);
-                if(!video_set_mode(videomodes))
-                {
-                    borShutdown(1, "Unable to set video mode: %d x %d!\n", videomodes.hRes, videomodes.vRes);
-                }
-                SB_setvolume(SB_VOICEVOL, savedata.soundvol);
-                sound_volume_music(savedata.musicvol, savedata.musicvol);
-                restored = 1;
-                break;
-            default:
-                quit = 1;
-            }
+            }            
         }
     }
     savesettings();
@@ -38862,7 +40235,7 @@ void menu_options_debug()
     while(!quit)
     {
         // Display menu title.
-        _menutextm(2, MENU_POS_Y, 0, Tr("Debug Settings"));
+        _menutextm(2, -5, 0, Tr("Debug Settings"));
 
         // Menu items.
         // Y position is controlled by a incremented integer.
@@ -38977,7 +40350,7 @@ void menu_options_debug()
                     savedata.debuginfo ^= DEBUG_DISPLAY_RANGE;
                     break;
                 case ITEM_EXIT:
-                    quit = 1;
+                    quit = (bothnewkeys & FLAG_ANYBUTTON);
             }
         }
     }
@@ -39027,7 +40400,7 @@ void menu_options_system()
 
     while(!quit)
     {
-        _menutextm(2, SYS_OPT_Y_POS-2, 0, Tr("System Options"));
+        _menutextm(2, -5, 0, Tr("System Options"));
 
         _menutext(0, col1, SYS_OPT_Y_POS, Tr("Total RAM:"));
         _menutext(0, col2, SYS_OPT_Y_POS, Tr("%s KB"), commaprint(getSystemRam(KBYTES)));
@@ -39143,7 +40516,7 @@ void menu_options_system()
 
             sound_play_sample(SAMPLE_BEEP2, 0, savedata.effectvol, savedata.effectvol, 100);
 
-                 if (selector==RET) quit = 1;
+                 if (selector==RET) quit = (bothnewkeys & FLAG_ANYBUTTON);
             else if (selector==SYS_OPT_LOG) savedata.uselog =  !savedata.uselog;
             else if (selector==SYS_OPT_VSDAMAGE)
             {
@@ -39160,9 +40533,9 @@ void menu_options_system()
                 }
             }
             else if (selector==SYS_OPT_CHEATS) cheats = !cheats;
-            else if (selector==SYS_OPT_DEBUG && !nodebugoptions) menu_options_debug();
+            else if (selector==SYS_OPT_DEBUG && !nodebugoptions && (bothnewkeys & FLAG_ANYBUTTON)) menu_options_debug();
 #ifndef DC
-            else if (selector==SYS_OPT_CONFIG-ex_labels) menu_options_config();
+            else if (selector==SYS_OPT_CONFIG-ex_labels && (bothnewkeys & FLAG_ANYBUTTON)) menu_options_config();
 #endif
 
 #ifdef PSP
@@ -39192,7 +40565,7 @@ void menu_options_system()
                 }
             }
 #endif
-            else quit = 1;
+            else quit = (bothnewkeys & FLAG_ANYBUTTON);
         }
     }
     savesettings();
@@ -39301,6 +40674,9 @@ void menu_options_video()
 
         _menutext((selector == 7), col1, 4, Tr("Software Filter:"));
         _menutext((selector == 7), col2, 4, ((savedata.hwscale >= 2.0 || savedata.fullscreen) ? Tr(GfxBlitterNames[savedata.swfilter]) : Tr("Disabled")));
+        
+        _menutext((selector == 8), col1, 5, Tr("VSync:"));
+        _menutext((selector == 8), col2, 5, savedata.vsync ? "Enabled" : "Disabled");
 
         _menutext((selector == 8), col1, 5, Tr("VSync:"));
         _menutext((selector == 8), col2, 5, savedata.vsync ? "Enabled" : "Disabled");
@@ -39611,7 +40987,7 @@ void menu_options_video()
 #endif
 #endif
             default:
-                quit = 1;
+                quit = (bothnewkeys & FLAG_ANYBUTTON);
             }
         }
     }
@@ -39661,7 +41037,7 @@ void menu_options()
 
     while(!quit)
     {
-        if (!cheats || forcecheatsoff) _menutextm(2, y_offset-1, 0, Tr("Options")); else _menutextm(2, y_offset-1, 0, Tr("Cheat Options"));
+        if (!cheats || forcecheatsoff) _menutextm(2, -5, 0, Tr("Options")); else _menutextm(2, -5, 0, Tr("Cheat Options"));
 
         _menutextm((selector == VIDEO_OPTION), y_offset+VIDEO_OPTION, 0, Tr("Video Options..."));
         _menutextm((selector == SOUND_OPTION), y_offset+SOUND_OPTION, 0, Tr("Sound Options..."));
@@ -39718,25 +41094,28 @@ void menu_options()
                 sound_play_sample(SAMPLE_BEEP2, 0, savedata.effectvol, savedata.effectvol, 100);
             }
 
-                if(selector==BACK_OPTION) quit = 1;
-           else if(selector==VIDEO_OPTION) menu_options_video();
-           else if(selector==SOUND_OPTION) menu_options_sound();
-           else if(selector==CONTROL_OPTION) menu_options_input();
-           else if(selector==SYSTEM_OPTION)
-           {
-                menu_options_system();
-                if (cheats && !forcecheatsoff)
+            if(bothnewkeys & FLAG_ANYBUTTON)
+            {
+                     if(selector==BACK_OPTION) quit = 1;
+                else if(selector==VIDEO_OPTION) menu_options_video();
+                else if(selector==SOUND_OPTION) menu_options_sound();
+                else if(selector==CONTROL_OPTION) menu_options_input();
+                else if(selector==SYSTEM_OPTION)
                 {
-                    y_offset = OPT_Y_POS-TOT_CHEATS;
-                    if(level != NULL && _pause > 0) y_offset += CHEAT_PAUSE_POSY;
-                    cheat_opt_offset = 1;
-                    BACK_OPTION = END_OPTION-TOT_CHEATS+TOT_CHEATS;
-                }
-                else
-                {
-                    y_offset = OPT_Y_POS;
-                    cheat_opt_offset = 0;
-                    BACK_OPTION = END_OPTION-TOT_CHEATS;
+                        menu_options_system();
+                        if (cheats && !forcecheatsoff)
+                        {
+                            y_offset = OPT_Y_POS-TOT_CHEATS;
+                            if(level != NULL && _pause > 0) y_offset += CHEAT_PAUSE_POSY;
+                            cheat_opt_offset = 1;
+                            BACK_OPTION = END_OPTION-TOT_CHEATS+TOT_CHEATS;
+                        }
+                        else
+                        {
+                            y_offset = OPT_Y_POS;
+                            cheat_opt_offset = 0;
+                            BACK_OPTION = END_OPTION-TOT_CHEATS;
+                        }
                 }
            }
            else if(selector==LIVES_CHEAT) livescheat = !livescheat;
@@ -39772,11 +41151,10 @@ void openborMain(int argc, char **argv)
     u32 introtime = 0;
     int started = 0;
     char tmpBuff[MAX_BUFFER_LEN] = {""};
-    int players[MAX_PLAYERS] = {0, 0, 0, 0};
     int i;
     int argl;
 
-    printf("OpenBoR %s, Compile Date: " __DATE__ "\n\n", VERSION);
+    printf("OpenBoR %s Compile Date: " __DATE__ "\n\n", VERSION);
 
     if(argc > 1)
     {
@@ -39789,9 +41167,16 @@ void openborMain(int argc, char **argv)
         {
             printFileUsageStatistics = getValidInt((char *)argv[1] + 14, "", "");
         }
+        
+        argl = strlen(argv[argc - 1]);
+        if(argl > 10 && !memcmp(argv[argc - 1], "cheatcode=", 10))
+        {
+          cheatcode = getValidInt((char *)argv[argc - 1] + 10, "", "");
+          bonus = cheatcode >= 0 ? cheatcode : 999;
+          printf("cheatcode=%d\n", cheatcode);
+        }
     }
-
-
+    
     modelcmdlist = createModelCommandList();
     modelstxtcmdlist = createModelstxtCommandList();
     levelcmdlist = createLevelCommandList();
@@ -39941,6 +41326,7 @@ void openborMain(int argc, char **argv)
                     for(i = 0; i < MAX_PLAYERS; i++)
                     {
                         players[i] = player[i].newkeys & (FLAG_ANYBUTTON);
+			//printf("Valor i=%d, newkeys=%d\n",i,player[i].newkeys); //TAG_YO
                     }
                     relback = choose_mode(players);
                     if(relback)

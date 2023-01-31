@@ -340,6 +340,7 @@ int Varlist_DeleteByName(Varlist *array, char *theName)
 void Script_Global_Init()
 {
     memset(&spawnentry, 0, sizeof(spawnentry)); //clear up the spawn entry
+    spawnentry.index = spawnentry.item_properties.index = spawnentry.weaponindex = -1;
     drawmethod = plainmethod;
 
     Varlist_Init(&global_var_list, max_indexed_vars);
@@ -395,6 +396,7 @@ void Script_Global_Clear()
     Varlist_Clear(&global_var_list);
 
     memset(&spawnentry, 0, sizeof(spawnentry));//clear up the spawn entry
+    spawnentry.index = spawnentry.item_properties.index = spawnentry.weaponindex = -1;
     for(i = 0; i < numfilestreams; i++)
     {
         if(filestreams[i].buf)
@@ -960,6 +962,7 @@ static const char *svlist[] =
     "in_menuscreen",
     "in_new_game",
     "in_options",
+    "in_sa_count",
     "in_selectscreen",
     "in_showcomplete",
     "in_sound_options",
@@ -2087,6 +2090,7 @@ enum entityproperty_enum
     _ep_hostile,
     _ep_icon,
     _ep_iconposition,
+    _ep_ignore_projectile_wall_collision,
     _ep_invincible,
     _ep_invinctime,
     _ep_jugglepoints,
@@ -2122,6 +2126,7 @@ enum entityproperty_enum
     _ep_name,
     _ep_nameposition,
     _ep_nextanim,
+    _ep_next_force_direction,
     _ep_nextmove,
     _ep_nextthink,
     _ep_no_adjust_base,
@@ -2137,6 +2142,7 @@ enum entityproperty_enum
     _ep_offscreen_noatk_factor,
     _ep_offscreenkill,
     _ep_opponent,
+    _ep_override_next_force_direction,
     _ep_owner,
     _ep_pain_time,
     _ep_parent,
@@ -2290,6 +2296,7 @@ static const char *eplist[] =
     "hostile",
     "icon",
     "iconposition",
+    "ignore_projectile_wall_collision",
     "invincible",
     "invinctime",
     "jugglepoints",
@@ -2325,6 +2332,7 @@ static const char *eplist[] =
     "name",
     "nameposition",
     "nextanim",
+    "nextforcedirection",
     "nextmove",
     "nextthink",
     "no_adjust_base",
@@ -2340,6 +2348,7 @@ static const char *eplist[] =
     "offscreennoatkfactor",
     "offscreenkill",
     "opponent",
+    "overridenextforcedirection",
     "owner",
     "pain_time",
     "parent",
@@ -2736,6 +2745,8 @@ enum gep_flash_enum
     _ep_flash_block,
     _ep_flash_def,
     _ep_flash_noattack,
+    _ep_flash_overridesource,
+    _ep_flash_overridetarget,
     _ep_flash_the_end,
 };
 
@@ -2941,6 +2952,8 @@ int mapstrings_entityproperty(ScriptVariant **varlist, int paramCount)
         "block",
         "default",
         "noattack",
+        "overridesource",
+        "overridetarget",
     };
 
     static const char *proplist_icon[] =
@@ -4003,23 +4016,53 @@ HRESULT openbor_getentityproperty(ScriptVariant **varlist , ScriptVariant **pret
             return E_FAIL;
         }
         ltemp = arg->lVal;
-        ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
 
         switch(ltemp)
         {
         case _ep_flash_block:
         {
-            i = ent->modeldata.bflash;
+            ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
+            (*pretvar)->lVal = (LONG)ent->modeldata.bflash;
             break;
         }
         case _ep_flash_def:
         {
-            i = ent->modeldata.flash;
+            ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
+            (*pretvar)->lVal = (LONG)ent->modeldata.flash;
             break;
         }
         case _ep_flash_noattack:
         {
-            i = ent->modeldata.noatflash;
+            ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
+            (*pretvar)->lVal = (LONG)ent->modeldata.noatflash;
+            break;
+        }
+        case _ep_flash_overridesource:
+        {
+            ScriptVariant_ChangeType(*pretvar, VT_STR);
+            int model_index = ent->modeldata.flashoverridesource;
+            if(model_index >= 0 && model_index < models_cached)
+            {
+                (*pretvar)->strVal = StrCache_CreateNewFrom(model_cache[model_index].name);
+            }
+            else
+            {
+                (*pretvar)->strVal = StrCache_CreateNewFrom("");
+            }
+            break;
+        }
+        case _ep_flash_overridetarget:
+        {
+            ScriptVariant_ChangeType(*pretvar, VT_STR);
+            int model_index = ent->modeldata.flashoverridetarget;
+            if(model_index >= 0 && model_index < models_cached)
+            {
+                (*pretvar)->strVal = StrCache_CreateNewFrom(model_cache[model_index].name);
+            }
+            else
+            {
+                (*pretvar)->strVal = StrCache_CreateNewFrom("");
+            }
             break;
         }
         default:
@@ -4028,8 +4071,6 @@ HRESULT openbor_getentityproperty(ScriptVariant **varlist , ScriptVariant **pret
             return E_FAIL;
         }
         }
-        ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
-        (*pretvar)->lVal = (LONG)i;
         break;
     }
     case _ep_pain_time:
@@ -4232,6 +4273,12 @@ HRESULT openbor_getentityproperty(ScriptVariant **varlist , ScriptVariant **pret
             ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
             (*pretvar)->lVal = -1;
         }
+        break;
+    }
+    case _ep_ignore_projectile_wall_collision:
+    {
+        ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
+        (*pretvar)->lVal = (LONG)ent->modeldata.ignore_projectile_wall_collision;
         break;
     }
     case _ep_invincible:
@@ -4647,6 +4694,12 @@ HRESULT openbor_getentityproperty(ScriptVariant **varlist , ScriptVariant **pret
         (*pretvar)->lVal = (LONG)ent->nextanim;
         break;
     }
+    case _ep_next_force_direction:
+    {
+        ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
+        (*pretvar)->lVal = (LONG)ent->next_force_direction;
+        break;
+    }
     case _ep_nextmove:
     {
         ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
@@ -4750,6 +4803,12 @@ HRESULT openbor_getentityproperty(ScriptVariant **varlist , ScriptVariant **pret
             ScriptVariant_ChangeType(*pretvar, VT_PTR);
             (*pretvar)->ptrVal = (VOID *)ent->custom_target;
         }
+        break;
+    }
+    case _ep_override_next_force_direction:
+    {
+        ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
+        (*pretvar)->lVal = (LONG)ent->override_next_force_direction;
         break;
     }
     case _ep_owner:
@@ -6100,7 +6159,7 @@ HRESULT openbor_changeentityproperty(ScriptVariant **varlist , ScriptVariant **p
     {
         if(SUCCEEDED(ScriptVariant_IntegerValue(varlist[2], &ltemp)))
         {
-            ent->attack_id_incoming = (LONG)ltemp;
+            insert_attack_id_incoming(ent, (LONG)ltemp);
         }
         break;
     }
@@ -6173,6 +6232,14 @@ HRESULT openbor_changeentityproperty(ScriptVariant **varlist , ScriptVariant **p
         if(paramCount > 3 && SUCCEEDED(ScriptVariant_IntegerValue(varlist[3], &ltemp)))
         {
             ent->modeldata.icon.position.y = (LONG)ltemp;
+        }
+        break;
+    }
+    case _ep_ignore_projectile_wall_collision:
+    {
+        if(SUCCEEDED(ScriptVariant_IntegerValue(varlist[2], &ltemp)))
+        {
+            ent->modeldata.ignore_projectile_wall_collision = (LONG)ltemp;
         }
         break;
     }
@@ -6503,6 +6570,21 @@ HRESULT openbor_changeentityproperty(ScriptVariant **varlist , ScriptVariant **p
         }
         break;
     }
+    case _ep_next_force_direction:
+    {
+        // if a 4th param exists it is used to set the override_next_force_direction value
+        // otherwise override_next_force_direction is set to 1 to override just once
+        if(SUCCEEDED(ScriptVariant_IntegerValue(varlist[2], &ltemp)))
+        {
+            ent->next_force_direction = (LONG)ltemp;
+            ent->override_next_force_direction = 1;
+        }
+        if(paramCount > 3 && SUCCEEDED(ScriptVariant_IntegerValue(varlist[3], &ltemp)))
+        {
+            ent->override_next_force_direction = (LONG)ltemp;
+        }
+        break;
+    }
     case _ep_nextmove:
     {
         if(SUCCEEDED(ScriptVariant_IntegerValue(varlist[2], &ltemp)))
@@ -6618,6 +6700,14 @@ HRESULT openbor_changeentityproperty(ScriptVariant **varlist , ScriptVariant **p
     case _ep_custom_target:
     {
         ent->custom_target = (entity *)varlist[2]->ptrVal;
+        break;
+    }
+    case _ep_override_next_force_direction:
+    {
+        if(SUCCEEDED(ScriptVariant_IntegerValue(varlist[2], &ltemp)))
+        {
+            ent->override_next_force_direction = (LONG)ltemp;
+        }
         break;
     }
     case _ep_owner:
@@ -7840,7 +7930,7 @@ HRESULT openbor_changeplayerproperty(ScriptVariant **varlist , ScriptVariant **p
     {
         if(SUCCEEDED(ScriptVariant_IntegerValue(arg, &ltemp)))
         {
-            player[index].hasplayed = (LONG)ltemp;
+            player[index].hasplayed = players[index] = (LONG)ltemp;
         }
         else
         {
@@ -8244,6 +8334,10 @@ int getsyspropertybyindex(ScriptVariant *var, int index)
         ScriptVariant_ChangeType(var, VT_INTEGER);
         var->lVal = gfx_y_offset_adj;
         break;
+    case _sv_in_sa_count:
+        ScriptVariant_ChangeType(var, VT_INTEGER);
+        var->lVal = bonus;
+        break;        
     case _sv_in_selectscreen:
         ScriptVariant_ChangeType(var, VT_INTEGER);
         var->lVal = selectScreen;
@@ -10403,6 +10497,7 @@ HRESULT openbor_setspawnentry(ScriptVariant **varlist, ScriptVariant **pretvar, 
     DOUBLE dbltemp;
     int temp, prop;
     ScriptVariant *arg = NULL;
+    char *name;
 
     if(paramCount < 2)
     {
@@ -10436,7 +10531,12 @@ HRESULT openbor_setspawnentry(ScriptVariant **varlist, ScriptVariant **pretvar, 
             printf("You must use a string value for spawn entry's name property: function setspawnentry.\n");
             goto setspawnentry_error;
         }
-        spawnentry.model = findmodel((char *)StrCache_Get(arg->strVal));
+        name = (char *)StrCache_Get(arg->strVal);
+        spawnentry.model = findmodel(name);
+        if(!spawnentry.model)
+        {
+          spawnentry.index = get_cached_model_index(name);
+        }
         break;
     case _sse_alias:
         if(arg->vt != VT_STR)
@@ -14105,7 +14205,7 @@ HRESULT openbor_loadmodel(ScriptVariant **varlist , ScriptVariant **pretvar, int
             goto loadmodel_error;
         }
 
-    model = load_cached_model(StrCache_Get(varlist[0]->strVal), "openbor_loadmodel", (char)unload);
+    model = load_cached_model(StrCache_Get(varlist[0]->strVal), "openbor_loadmodel", 3, false);
 
     if(paramCount >= 3 && model)
     {
@@ -14138,7 +14238,7 @@ HRESULT openbor_unload_model(ScriptVariant **varlist , ScriptVariant **pretvar, 
         goto unload_model_error;
     }
 
-    model = load_cached_model(StrCache_Get(varlist[0]->strVal), "openbor_loadmodel", (char)unload);
+    model = load_cached_model(StrCache_Get(varlist[0]->strVal), "openbor_loadmodel", (char)unload, false);
 
     if(paramCount >= 1 && model)
     {
@@ -15311,7 +15411,14 @@ HRESULT openbor_getsaveinfo(ScriptVariant **varlist , ScriptVariant **pretvar, i
     }
     else if(0 == stricmp(prop, "times_completed"))
     {
-        (*pretvar)->lVal = (LONG)slot->times_completed;
+        if(cheatcode != 0)
+        {
+          (*pretvar)->lVal = (ltemp == 0) ? bonus : 0;
+        }
+        else
+        {
+          (*pretvar)->lVal = (LONG)slot->times_completed;
+        }
     }
     else if(0 == stricmp(prop, "score"))
     {

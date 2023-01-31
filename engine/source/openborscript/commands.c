@@ -271,6 +271,7 @@ List *createModelCommandList(void)
     LIST_ADD(CMD_MODEL_FASTATTACK, "fastattack");
     LIST_ADD(CMD_MODEL_FIREB, "fireb");
     LIST_ADD(CMD_MODEL_FLASH, "flash");
+    LIST_ADD(CMD_MODEL_FLASHOVERRIDE, "flashoverride");
     LIST_ADD(CMD_MODEL_FLIPFRAME, "flipframe");
     LIST_ADD(CMD_MODEL_FMAP, "fmap");
     LIST_ADD(CMD_MODEL_FOLLOWANIM, "followanim");
@@ -314,6 +315,7 @@ List *createModelCommandList(void)
     LIST_ADD(CMD_MODEL_ICONW, "iconw");
     LIST_ADD(CMD_MODEL_IDLE, "idle");
     LIST_ADD(CMD_MODEL_IGNOREATTACKID, "ignoreattackid");
+    LIST_ADD(CMD_MODEL_IGNOREPROJECTILEWALLCOLLISION, "ignore_projectile_wall_collision");
     LIST_ADD(CMD_MODEL_INHOLESCRIPT, "inholescript");
     LIST_ADD(CMD_MODEL_INSTANTITEMDEATH, "instantitemdeath");
     LIST_ADD(CMD_MODEL_ITEMBOX, "itembox");
@@ -352,6 +354,7 @@ List *createModelCommandList(void)
     LIST_ADD(CMD_MODEL_NODIEBLINK, "nodieblink");
     LIST_ADD(CMD_MODEL_NODRAWMETHOD, "nodrawmethod");
     LIST_ADD(CMD_MODEL_NODROP, "nodrop");
+    LIST_ADD(CMD_MODEL_NOEXPLODE, "noexplode");
     LIST_ADD(CMD_MODEL_NOGRAB, "nograb");
     LIST_ADD(CMD_MODEL_NOKILL, "nokill");
     LIST_ADD(CMD_MODEL_NOLIFE, "nolife");
@@ -429,6 +432,7 @@ List *createModelCommandList(void)
     LIST_ADD(CMD_MODEL_SCROLL, "scroll");
     LIST_ADD(CMD_MODEL_SEAL, "seal");
     LIST_ADD(CMD_MODEL_SECRET, "secret");
+	LIST_ADD(CMD_MODEL_SELECTCOL, "selectcol");
     LIST_ADD(CMD_MODEL_SETA, "seta");
     LIST_ADD(CMD_MODEL_SETLAYER, "setlayer");
     LIST_ADD(CMD_MODEL_SHADOW, "shadow");
@@ -705,6 +709,11 @@ List *createLevelOrderCommandList(void)
     LIST_ADD(CMD_LEVELORDER_SCOREFORMAT, "scoreformat");
     LIST_ADD(CMD_LEVELORDER_SELECT, "select");
     LIST_ADD(CMD_LEVELORDER_SET, "set");
+    LIST_ADD(CMD_LEVELORDER_HALLFAME, "hallfame");
+    LIST_ADD(CMD_LEVELORDER_HALLFAMEDIFFICULTIES, "hallfame_difficulties");
+    LIST_ADD(CMD_LEVELORDER_HALLFAMEDIFFICULTYCREDITS, "hallfame_difficulty_credits");
+    LIST_ADD(CMD_LEVELORDER_HALLFAMEINITIALS, "hallfame_initials");
+    LIST_ADD(CMD_LEVELORDER_HALLFAMETIMES, "hallfame_times");
     LIST_ADD(CMD_LEVELORDER_SHOWCOMPLETE, "showcomplete");
     LIST_ADD(CMD_LEVELORDER_SHOWRUSHBONUS, "showrushbonus");
     LIST_ADD(CMD_LEVELORDER_SINGLE, "single");

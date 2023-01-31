@@ -65,7 +65,7 @@
 
 #define		COMPATIBLEVERSION	0x00033748
 #define		CV_SAVED_GAME		0x00033747
-#define		CV_HIGH_SCORE		0x00033747
+#define		CV_HIGH_SCORE		0x00033748
 #define     GAME_SPEED          200
 #define		THINK_SPEED			2
 #define		COUNTER_SPEED		(GAME_SPEED*2)
@@ -82,14 +82,19 @@
 #define		MAX_ATTACKS			4					// Total number of attacks players have
 #define     MAX_FOLLOWS         4					// For followup animations
 #define     MAX_COLLISIONS      2                   // Collision boxes.
-#define		MAX_ARG_LEN			512
-#define		MAX_ALLOWSELECT_LEN	1024
-#define		MAX_SELECT_LOADS   	512
+#define		MAX_ARG_LEN			1024			//MIO cambio del valor original 512, para aumentar el tamaño máximo del buffer
+#define		MAX_ALLOWSELECT_LEN	1024               
+#define		MAX_SELECT_LOADS   	512 
 #define		MAX_PAL_SIZE		1024
 #define		MAX_CACHED_BACKGROUNDS 9
-#define     MAX_ARG_COUNT       64
+#define     MAX_ARG_COUNT       128             //MIO cambio del valor original 64, para aumentar el tamaño máximo de personajes
+#define     MAX_ATTACK_IDS      100             // Max amount of memorized attack ids
+#define     MAX_SEL_PLAYERS     200             // Max amount of selectable players. Used during random select.
+#define     MAX_DIFFICULTIES    10              // Max number of difficulties per mode
+#define     NUM_INITIALS        3               // Number of initials in hall of fame
 #define     PLATFORM_DEFAULT_X  99999
-#define     LIFESPAN_DEFAULT	0x7fffffff
+#define     LIFESPAN_DEFAULT    0x7fffffff
+
 /*
 Note: the min Z coordinate of the player is important
 for several other drawing operations.
@@ -448,11 +453,11 @@ typedef enum
     SDID_MOVELEFT,
     SDID_MOVERIGHT,
     SDID_ATTACK,
-    SDID_ATTACK2,
     SDID_ATTACK3,
     SDID_ATTACK4,
     SDID_JUMP,
     SDID_SPECIAL,
+    SDID_ATTACK2,
     SDID_START,
     SDID_SCREENSHOT,
     SDID_ESC
@@ -1741,6 +1746,11 @@ typedef struct
     unsigned compatibleversion;
     unsigned highsc[10];
     char hscoren[10][MAX_NAME_LEN];
+    char hscorei[10][3];
+    bool is1CC[10];
+    unsigned short mode;
+    unsigned short difficulty;
+    unsigned short credits;
 } s_savescore;
 
 typedef struct
@@ -2285,6 +2295,7 @@ typedef struct
     int nomove; // Flag for static enemies
     int noflip; // Flag to determine if static enemies flip or stay facing the same direction
     int nodrop; // Flag to determine if enemies can be knocked down
+    int noexplode; // Flag to determine if a bomb projectile should explode when performing an attack
     int nodieblink; // Flag to determine if blinking while playing die animation
     int holdblock; // Continue the block animation as long as the player holds the button down
     int nopassiveblock; // Don't auto block randomly
@@ -2320,6 +2331,8 @@ typedef struct
     int star; // 7-1-2005 now every enemy can have their own "ninja star" projectiles
     int bomb; // New projectile type for exploding bombs/grenades/dynamite
     int flash; // Now each entity can have their own flash
+    int flashoverridesource; // Flash to override when receiving an attack
+    int flashoverridetarget; // New flash to use when overriding
     int bflash; // Flash that plays when an attack is blocked
     s_dust dust; //Spawn entity during certain actions.
     s_axis_plane_vertical_int size; // Used to set height of player in pixels
@@ -2425,6 +2438,9 @@ typedef struct
     int hitwalltype; // wall type to toggle hitwall animations
     e_ModelFreetype freetypes;
     s_scripts *scripts;
+    int selectcol; //almacena la columna que usará el personaje en la pantalla de selección.
+    bool quickload;
+    int ignore_projectile_wall_collision;
 } s_model;
 
 typedef struct
@@ -2434,6 +2450,11 @@ typedef struct
     s_model *model;
     int loadflag;
     int selectable;
+
+    //quickload
+    bool player;
+    int clearcount;
+    int selectcol;
 } s_modelcache;
 extern s_modelcache *model_cache;
 
@@ -2582,10 +2603,8 @@ typedef struct entity
 	
 	// Unsigned integers
 	unsigned int			animpos;							// Current animation frame. ~~
-	unsigned int			attack_id_incoming;					// ~~
-    unsigned int			attack_id_incoming2;				//Kratus (20-04-21) used to memorize the last 4 hitboxes and avoid the multihit bug
-    unsigned int			attack_id_incoming3;				//Kratus (20-04-21) used to memorize the last 4 hitboxes and avoid the multihit bug
-    unsigned int			attack_id_incoming4;				//Kratus (20-04-21) used to memorize the last 4 hitboxes and avoid the multihit bug
+	unsigned int			attack_id_incoming[MAX_ATTACK_IDS];
+    unsigned int            attack_id_incoming_index;
 	unsigned int			attack_id_outgoing;					// ~~
 	unsigned int			animnum;							// Current animation id. ~~
 	unsigned int			animnum_previous;					// Previous animation id. ~~
@@ -2609,6 +2628,8 @@ typedef struct entity
 	int						playerindex;						// Player controlling the entity. ~~
 	int						seal;								// If 0+, entity can't perform special with >= energy cost. ~~
 	int						sortid;								// Drawing order (sprite queue sort id). ~~
+    int                     override_next_force_direction;      // 0 = disabled, 1 = override once, 2 = override always
+    int                     next_force_direction;               // force_direction value to be used when override_next_force_direction is set
 
 	// Enumerated integers.
 	e_spawn_type			spawntype;							// Type of spawn (level spawn, script spawn, ...) ~~
@@ -2775,6 +2796,7 @@ typedef struct
     int saveflag;
     int nosame;
     int noshowcomplete;
+    s_savescore* savescore;
 } s_set_entry;
 
 typedef struct
@@ -2838,6 +2860,7 @@ typedef struct
     float x;
     float z;
     int type;
+    int ignore_projectile_wall_collision;
 } s_terrain;
 
 typedef struct
@@ -3018,6 +3041,7 @@ void    loadsettings(void);
 void    loadfromdefault(void);
 void    clearSavedGame(void);
 void    clearHighScore(void);
+void    initHighScore(void);
 int    saveGameFile(void);
 int     loadGameFile(void);
 int		saveScriptFile(void);
@@ -3091,10 +3115,13 @@ void remove_from_cache(char *name);
 void free_modelcache();
 int get_cached_model_index(char *name);
 char *get_cached_model_path(char *name);
-s_model *load_cached_model(char *name, char *owner, char unload);
+s_model *load_cached_model(char *name, char *owner, char unload, bool quickload);
 int is_set(s_model *model, int m);
 int load_script_setting();
 int load_models();
+void identify_selectable_players();
+void preload_cached_model(char *name);
+void unload_model(s_model *model);
 void unload_levelorder();
 void load_levelorder();
 void unload_level();
@@ -3159,6 +3186,7 @@ void kill_all();
 
 
 int projectile_wall_deflect(entity *ent);
+int check_projectile_wall_collision(entity *ent);
 
 void sort_invert_by_parent(entity *ent, entity* parent);
 
@@ -3211,6 +3239,8 @@ int is_on_platform(entity *);
 entity *get_platform_on(entity *);
 void do_item_script(entity *ent, entity *item);
 void do_attack(entity *e);
+void insert_attack_id_incoming(entity *e,  unsigned int attack_id_incoming);
+int check_attack_id_incoming(entity *e,  unsigned int attack_id_incoming);
 int do_energy_charge(entity *ent);
 void adjust_base(entity *e, entity **pla);
 void check_gravity(entity *e);
@@ -3353,6 +3383,8 @@ int playgif(char *filename, int x, int y, int noskip);
 void playscene(char *filename);
 void gameover();
 void hallfame(int addtoscore);
+void hallfame_add();
+void hallfame_show();
 void showcomplete(int num);
 int playlevel(char *filename);
 int selectplayer(int *players, char *filename, int useSavedGame);
@@ -3365,6 +3397,7 @@ void safe_set(int *arr, int index, int newkey, int oldkey);
 void keyboard_setup_menu(int player);
 void keyboard_setup(int player);
 void inputrefresh();
+int allow_default_keys();
 
 int menu_difficulty();
 void menu_options();
@@ -3391,5 +3424,7 @@ void goto_mainmenu(int);
 
 extern s_savelevel   *savelevel;
 extern s_savescore    savescore;
+extern int cheatcode;
+extern int bonus;
 
 #endif

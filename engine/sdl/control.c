@@ -245,6 +245,7 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
 					}
 				}
 				break;
+
 #endif
             // PLUG AND PLAY
             case SDL_JOYDEVICEADDED:
@@ -305,6 +306,13 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
                     joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j) << 10;
                     continue;
                 }
+				if(!savedata.single_joycon_mode)
+				{
+					// digital directions same as analog ones if not single joycon mode
+					if(j >= 12 && j <= 15) {
+						joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j)  << (j + 4);
+					}
+				}
                 // skip "plus and minus" combo key (?!)
                 else if(j == 34)
                 {
@@ -1003,12 +1011,20 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 void control_rumble(int port, int ratio, int msec)
 {
     #if SDL
-    if (joystick[port] != NULL && joystick_haptic[port] != NULL) {
-        if(SDL_HapticRumblePlay(joystick_haptic[port], ratio, msec) != 0)
+    if (joystick[port] != NULL)
+    {
+        if(joystick_haptic[port] != NULL)
         {
-            //printf( "Warning: Unable to play rumble! %s\n", SDL_GetError() );
+            SDL_HapticRumblePlay(joystick_haptic[port], ratio, msec);
         }
-    }
+	#if __SWITCH__	
+        else
+        {
+            // try joystick rumble
+            int freq = msec ? 30000 : 0;
+            SDL_JoystickRumble(joystick[port], freq, freq, msec);
+        }
+	#endif
+    }	
     #endif
 }
-

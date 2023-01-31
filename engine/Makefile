@@ -10,7 +10,7 @@
 #
 #               	OpenBOR Makefile for ALL TARGET_PLATFORMs
 #
-#             PSP, PS3, Wii, Pandora, Windows, Darwin & Linux
+#             PSP, PS3, Wii, Pandora, Raspberry Pi, Windows, Darwin & Linux
 #
 #----------------------------------------------------------------------------------------------------
 
@@ -53,7 +53,7 @@ BUILD_VORBIS    = 1
 BUILD_WEBM      = 1
 BUILDING        = 1
 YASM 	        = yasm$(EXTENSION)
-CC              = $(WINDEV)/$(PREFIX)gcc$(EXTENSION)
+CC              = gcc$(EXTENSION)
 INCLUDES        = $(SDKPATH)/include \
                   $(SDKPATH)/include/SDL2 \
 		  $(EXTRA_INCLUDES)
@@ -83,21 +83,16 @@ BUILD_VORBIS    = 1
 BUILD_WEBM      = 1
 BUILDING        = 1
 YASM 	        = yasm
-CC  	        = $(LNXDEV)/$(PREFIX)gcc
+CC  	        = gcc
 OBJTYPE         = elf
 INCLUDES        = $(SDKPATH)/include
-ifeq ($(findstring 64, $(GCC_TARGET)), 64)
+
 TARGET_ARCH     = amd64
 BUILD_AMD64     = 1
 ARCHFLAGS       = -m64
 LIBRARIES       = $(SDKPATH)/lib/$(GCC_TARGET)
 CFLAGS          += -DAMD64
-else
-TARGET_ARCH     = x86
-ARCHFLAGS       = -m32
-LIBRARIES       = $(SDKPATH)/lib32
-BUILD_MMX       = 1
-endif
+
 ifeq ($(BUILD_LINUX), 0)
 BUILD_DEBUG     = 1
 endif
@@ -126,7 +121,7 @@ ARCHFLAGS       = -m64
 LIBRARIES       = $(SDKPATH)/usr/lib
 CFLAGS          += -DAMD64
 # Workaround for GCC 9
-CFLAGS          += -Wno-error=format-overflow -Wno-error=stringop-truncation -Wno-error=stringop-overflow
+CFLAGS          +=  -Wno-error=stringop-overflow
 endif
 
 ifdef BUILD_LINUX_LE_arm
@@ -146,7 +141,7 @@ INCLUDES        = $(SDKPATH)/usr/include \
 OBJTYPE         = elf
 LIBRARIES       = $(SDKPATH)/usr/lib
 # Workaround for GCC 9
-CFLAGS          += -Wno-error=format-overflow -Wno-error=stringop-truncation -Wno-error=implicit-function-declaration -Wno-error=unused-variable -Wno-error=unused-label -Wno-error=stringop-overflow
+CFLAGS          += -Wno-error=format-overflow -Wno-error=implicit-function-declaration -Wno-error=unused-variable -Wno-error=unused-label -Wno-error=stringop-overflow
 endif
 
 ifdef BUILD_DARWIN
@@ -202,6 +197,26 @@ BUILD_DEBUG     = 1
 endif
 endif
 
+ifdef BUILD_RASPBERRY
+TARGET          = $(VERSION_NAME).elf
+TARGET_FINAL    = $(VERSION_NAME)
+TARGET_PLATFORM = RASPBERRY
+BUILD_LINUX     = 1
+BUILD_SDL       = 1
+BUILD_WEBM      = 1
+BUILD_GFX       = 1
+BUILD_PTHREAD   = 1
+BUILD_SDL_IO    = 1
+BUILD_TREMOR    = 1
+BUILDING        = 1
+CC  	        = gcc
+OBJTYPE         = elf
+LIBRARIES       = .
+ifeq ($(BUILD_RASPBERRY), 0)
+BUILD_DEBUG     = 1
+endif
+endif
+
 ifdef BUILD_WII
 TARGET 	        = $(VERSION_NAME).elf
 TARGET_MAP      = $(TARGET).map
@@ -238,10 +253,10 @@ STRIP           = cp $(TARGET) $(TARGET_FINAL)
 ifndef BUILD_DEBUG
 ifndef NO_STRIP
 ifdef BUILD_WIN
-STRIP 	        = $(WINDEV)/$(PREFIX)strip$(EXTENSION) $(TARGET) -o $(TARGET_FINAL)
+STRIP 	        = strip$(EXTENSION) $(TARGET) -o $(TARGET_FINAL)
 endif
 ifdef BUILD_LINUX
-STRIP 	        = $(LNXDEV)/$(PREFIX)strip $(TARGET) -o $(TARGET_FINAL)
+STRIP 	        = strip $(TARGET) -o $(TARGET_FINAL)
 endif
 ifdef BUILD_DARWIN
 STRIP           = $(PREFIX)strip $(TARGET) -o $(TARGET_FINAL)
@@ -249,8 +264,11 @@ endif
 ifdef BUILD_PANDORA
 STRIP 	        = $(PNDDEV)/bin/arm-none-linux-gnueabi-strip $(TARGET) -o $(TARGET_FINAL)
 endif
+ifdef BUILD_RASPBERRY
+STRIP 	        = strip $(TARGET) -o $(TARGET_FINAL)
+endif
 ifdef BUILD_WII
-STRIP           = elf2dol $< $@
+ELF2DOL         = elf2dol $< $@
 endif
 endif
 endif
@@ -492,7 +510,7 @@ OBJS            = $(MAIN)                                                       
 #----------------------------------------------------------------------------------------------------
 
 CFLAGS 	       += $(addprefix -I", $(addsuffix ", $(INCS))) $(ARCHFLAGS) -D$(TARGET_PLATFORM)
-CFLAGS 	       += -g -Wall -Werror -fsigned-char -std=gnu99
+CFLAGS 	       += -g -Wall -Werror -Wno-format-truncation -Wno-stringop-truncation -fsigned-char -std=gnu99
 
 
 ifndef BUILD_DARWIN
@@ -532,6 +550,11 @@ endif
 
 ifdef BUILD_PANDORA
 CFLAGS         += -DLINUX
+endif
+
+
+ifdef BUILD_RASPBERRY
+CFLAGS         += -DLINUX -marm -mfloat-abi=hard -fomit-frame-pointer -ffast-math -O2
 endif
 
 
@@ -615,11 +638,11 @@ endif
 
 ifdef BUILD_SDL
 ifeq ($(findstring DGE, $(SDKPATH)), DGE)
-LIBS           += -lSDL -lSDL_gfx -lts #Kratus (29-04-21) Reversed the FPS limit to reduce CPU usage
+LIBS           += -lSDL
 else
 COMMA		=,
 RPATH_LIBS	= $(addprefix -Wl$(COMMA)-rpath$(COMMA),"$(LIBRARIES)")
-LIBS	       += $(RPATH_LIBS) -lSDL2 -lSDL2_gfx #Kratus (29-04-21) Reversed the FPS limit to reduce CPU usage
+LIBS	       += $(RPATH_LIBS) -lSDL2
 
 ifdef CROSSCOMPILE_LINUX_WIN
 LIBS	       += -lsetupapi
@@ -742,7 +765,7 @@ $(TARGET) : $(OBJS) $(RES)
 	@$(CC) $(CFLAGS) -o $(TARGET) $(OBJS) $(TARGET_RESOURCE) $(LIBS)
 $(TARGET_FINAL) : $(TARGET)
 	@echo Stripping $(TARGET_PLATFORM) Port: $(TARGET_FINAL)...
-	@$(STRIP)
+	@$(ELF2DOL)
 	@echo
 	@echo Completed $(TARGET_PLATFORM) Port!
 	@echo $(TARGET_FINAL) is now ready!
@@ -790,6 +813,7 @@ all:
 	@echo make BUILD_WII=1
 	@echo make BUILD_WIN=1
 	@echo make BUILD_PANDORA=1
+	@echo make BUILD_RASPBERRY=1
 	@echo make BUILD_LINUX=1
 	@echo
 	@echo Cleanup Intermediate Files:

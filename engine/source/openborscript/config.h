@@ -382,6 +382,7 @@ enum systemvariant_enum
     _sv_in_menuscreen,
     _sv_in_new_game,
     _sv_in_options,
+    _sv_in_sa_count,
     _sv_in_selectscreen,
     _sv_in_showcomplete,
     _sv_in_sound_options,

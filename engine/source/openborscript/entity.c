@@ -1375,7 +1375,7 @@ HRESULT openbor_set_entity_property(ScriptVariant **varlist, ScriptVariant **pre
 
             if(SUCCEEDED(ScriptVariant_IntegerValue(varlist[ARG_VALUE], &temp_int)))
             {
-                handle->attack_id_incoming = temp_int;
+                insert_attack_id_incoming(handle, temp_int);
             }
 
             break;
