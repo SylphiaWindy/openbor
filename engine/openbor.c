@@ -37768,7 +37768,7 @@ void tryvictorypose(entity *ent)
        !ent->falling &&
        !ent->dead &&
        !ent->rising &&
-       (ent->idling & IDLING_ACTIVE) &&
+       ent->idling &&
        ent->position.y <= ent->base )
     {
         ent->takeaction = NULL;
