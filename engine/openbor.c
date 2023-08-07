@@ -18872,6 +18872,12 @@ unsigned char *model_get_colourmap(s_model *model, unsigned which)
 // 0 = none, 1+ = alternative
 void ent_set_colourmap(entity *ent, unsigned int which)
 {
+    // try to assign same map as its owner
+    if (which <= 0 && ent->owner)
+    {
+        which = ent->owner->map;
+    }
+    
     if(which > ent->modeldata.maps_loaded)
     {
         which = 0;
