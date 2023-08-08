@@ -16779,12 +16779,14 @@ void updatestatus()
     s_model *model = NULL;
     s_set_entry *set = levelsets + current_set;
     char* name = NULL;
+    bool all_dead = true;
+    bool hurry_time = false;
 
     for(i = 0; i < set->maxplayers; i++)
     {
         if(player[i].ent)
         {
-            ;
+            all_dead = false;
         }
         else if(player[i].joining && player[i].name[0])
         {
@@ -16914,9 +16916,21 @@ void updatestatus()
                 }
             }
         }
+        
+        if(!player[i].ent && player[i].hasplayed && (player[i].playkeys & FLAG_ATTACK))
+        {
+            hurry_time = true;
+            player[i].playkeys = 0;
+        }
     }// end of for
 
     dt = timeleft / COUNTER_SPEED;
+
+    if (hurry_time && all_dead)
+    {
+        timeleft = dt * COUNTER_SPEED;
+    }
+
     if(dt >= 99)
     {
         dt      = 99;
