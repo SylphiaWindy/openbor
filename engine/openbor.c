@@ -36299,17 +36299,13 @@ void display_credits()
 {
     u32 finishtime = _time + 10 * GAME_SPEED;
     int done = 0;
-    int s = videomodes.vShift / 2 + 3;
+    int s = videomodes.vShift / 2 + 2;
     int v = (videomodes.vRes - videomodes.vShift) / 24;
     int m = 0;
     int h = videomodes.hRes / 2;
     int col1 = h - fontmonowidth(0) * 16;
     int col2 = h + fontmonowidth(0) * 4;
 
-    if(savedata.logo != 1)
-    {
-        return;
-    }
     fade_out(0, 0);
 
     unload_level();
@@ -36366,6 +36362,13 @@ void display_credits()
 
         font_printf(col1,  s + v * m, 0, 0, "PS Vita");
         font_printf(col2, s + v * m, 0, 0, "Plombo"); ++m;
+
+        font_printf(_strmidx(1, "LNS Enhancements"), s + v * m,  1, 0, "LNS Enhancements"); ++m;
+        font_printf(col1, s + v * m, 0, 0, "Hechelion");
+        font_printf(col2, s + v * m, 0, 0, "Developer"); ++m;
+
+        font_printf(col1, s + v * m, 0, 0, "Gonzalo MVP");
+        font_printf(col2, s + v * m, 0, 0, "Developer"); ++m;
 
         update(2, 0);
 
