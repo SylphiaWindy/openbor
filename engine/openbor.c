@@ -719,15 +719,19 @@ int                 versusdamage		= 2;					// Used for setting mode. (ability to
 int                 z_coords[3]			= {0, 0, 0};				// Used for setting customizable walkable area
 int                 rush[6]				= {0, 2, 3, 3, 3, 3};
 int                 pauseoffset[7]  	= {0, 1, 0, 0, 3, 0, 0};		// Used for customizable pause menu location (font0, font1, xpos, ypos, font_pause, xpos_pause, ypos_pause)
-int                 color_black			= 0;
-int                 color_red			= 0;
-int                 color_orange		= 0;
-int                 color_yellow		= 0;
 int                 color_white			= 0;
-int                 color_blue			= 0;
-int                 color_green			= 0;
-int                 color_pink			= 0;
-int                 color_purple		= 0;
+int                 color_black			= 0;
+int                 empty_transparent	= 0;
+int                 color25 			= 0;
+int                 color50 			= 0;
+int                 color100			= 0;
+int                 color200			= 0;
+int                 color300			= 0;
+int                 color400			= 0;
+int                 color500			= 0;
+int                 color600			= 0;
+int                 color700			= 0;
+int                 color800			= 0;
 int                 color_magic			= 0;
 int                 color_magic2		= 0;
 int                 lifebarfgalpha      = 0;
@@ -3737,15 +3741,16 @@ void lifebar_colors()
 
     if(buffer_pakfile(filename, &buf, &size) != 1)
     {
-        color_black = 0;
-        color_red = 0;
-        color_orange = 0;
-        color_yellow = 0;
         color_white = 0;
-        color_blue = 0;
-        color_green = 0;
-        color_pink = 0;
-        color_purple = 0;
+        color_black = 0;
+        empty_transparent = 0;
+        color25 = 0;
+        color50 = 0;
+        color100 = 0;
+        color200 = 0;
+        color300 = 0;
+        color400 = 0;
+        color500 = 0;
         color_magic = 0;
         color_magic2 = 0;
         shadowcolor = 0;
@@ -3771,33 +3776,49 @@ void lifebar_colors()
                 {
                     color_white = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
                 }
-                else if(stricmp(command, "color300") == 0)
+                else if(stricmp(command, "empty_transparent") == 0)
                 {
-                    color_orange = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                    empty_transparent = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
                 }
                 else if(stricmp(command, "color25") == 0)
                 {
-                    color_red = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                    color25 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
                 }
                 else if(stricmp(command, "color50") == 0)
                 {
-                    color_yellow = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                    color50 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
                 }
                 else if(stricmp(command, "color100") == 0)
                 {
-                    color_green = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                    color100 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
                 }
                 else if(stricmp(command, "color200") == 0)
                 {
-                    color_blue = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                    color200 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                }
+                else if(stricmp(command, "color300") == 0)
+                {
+                    color300 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
                 }
                 else if(stricmp(command, "color400") == 0)
                 {
-                    color_pink = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                    color400 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
                 }
                 else if(stricmp(command, "color500") == 0)
                 {
-                    color_purple = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                    color500 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                }
+                else if(stricmp(command, "color600") == 0)
+                {
+                    color600 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                }
+                else if(stricmp(command, "color700") == 0)
+                {
+                    color700 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
+                }
+                else if(stricmp(command, "color800") == 0)
+                {
+                    color800 = _makecolour(GET_INT_ARG(1), GET_INT_ARG(2), GET_INT_ARG(3));
                 }
                 //magic bars color declarations by tails
                 else if(stricmp(command, "colormagic") == 0)
@@ -3854,17 +3875,17 @@ void init_colourtable()
     mpcolourtable[9]  = color_magic;
     mpcolourtable[10] = color_magic2;
 
-    hpcolourtable[0]  = color_purple;
-    hpcolourtable[1]  = color_red;
-    hpcolourtable[2]  = color_yellow;
-    hpcolourtable[3]  = color_green;
-    hpcolourtable[4]  = color_blue;
-    hpcolourtable[5]  = color_orange;
-    hpcolourtable[6]  = color_pink;
-    hpcolourtable[7]  = color_purple;
-    hpcolourtable[8]  = color_black;
-    hpcolourtable[9]  = color_white;
-    hpcolourtable[10] = color_white;
+    hpcolourtable[0]  = empty_transparent;
+    hpcolourtable[1]  = color25;
+    hpcolourtable[2]  = color50;
+    hpcolourtable[3]  = color100;
+    hpcolourtable[4]  = color200;
+    hpcolourtable[5]  = color300;
+    hpcolourtable[6]  = color400;
+    hpcolourtable[7]  = color500;
+    hpcolourtable[8]  = color600;
+    hpcolourtable[9]  = color700;
+    hpcolourtable[10] = color800;
 
     memcpy(ldcolourtable, hpcolourtable, 11 * sizeof(*hpcolourtable));
 }
@@ -3899,41 +3920,57 @@ void load_background(char *filename)
     }
 
     lifebar_colors();
-    if(!color_black)
-    {
-        color_black = _makecolour(0, 0, 0);    // black boxes 500-600HP
-    }
-    if(!color_red)
-    {
-        color_red = _makecolour(255, 0, 0);    // 1% - 25% Full Health
-    }
-    if(!color_orange)
-    {
-        color_orange = _makecolour(255, 150, 0);    // 200-300HP
-    }
-    if(!color_yellow)
-    {
-        color_yellow = _makecolour(0xF8, 0xB8, 0x40);    // 26%-50% Full health
-    }
     if(!color_white)
     {
-        color_white = _makecolour(255, 255, 255);    // white boxes 600+ HP
+        color_white = _makecolour(255, 255, 255);    // white boxes
     }
-    if(!color_blue)
+    if(!color_black)
     {
-        color_blue = _makecolour(0, 0, 255);    // 100-200 HP
+        color_black = _makecolour(0, 0, 0);    // black boxes
     }
-    if(!color_green)
+    if(!empty_transparent)
     {
-        color_green = _makecolour(0, 255, 0);    // 51% - 100% full health
+        empty_transparent = _makecolour(128, 48, 208);    // transbox
     }
-    if(!color_pink)
+    if(!color25)
     {
-        color_pink = _makecolour(255, 0, 255);    // 300-400HP
+        color25 = _makecolour(255, 0, 0);    // 1% - 25% Full Health
     }
-    if(!color_purple)
+    if(!color50)
     {
-        color_purple = _makecolour(128, 48, 208);    // transbox 400-500HP
+        color50 = _makecolour(0xF8, 0xB8, 0x40);    // 26%-50% Full health
+    }
+    if(!color100)
+    {
+        color100 = _makecolour(0, 255, 0);    // 51% - 100% full health
+    }
+    if(!color200)
+    {
+        color200 = _makecolour(0, 0, 255);    // 100-200 HP
+    }
+    if(!color300)
+    {
+        color300 = _makecolour(255, 150, 0);    // 200-300HP
+    }
+    if(!color400)
+    {
+        color400 = _makecolour(255, 0, 255);    // 300-400HP
+    }
+    if(!color500)
+    {
+        color500 = _makecolour(128, 48, 208);   // 400-500HP
+    }
+    if(!color600)
+    {
+        color600 = _makecolour(0, 0, 0);        // 500-600HP
+    }
+    if(!color700)
+    {
+        color700 = _makecolour(255, 255, 255);  // 600-700HP
+    }
+    if(!color800)
+    {
+        color800 = _makecolour(255, 255, 255);   // 700-800HP
     }
     if(!color_magic)
     {
