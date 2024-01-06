@@ -23360,7 +23360,7 @@ void display_ents()
                         spriteq_add_sprite((int)(e->position.x - scrx), (int)(e->position.z - e->position.y - scry), z, f, drawmethod, sortid);
                     }
 
-                    can_mirror = (use_mirror && self->position.z > MIRROR_Z);
+                    can_mirror = (use_mirror && e->position.z > MIRROR_Z);
                     if(can_mirror)
                     {
                         spriteq_add_sprite((int)(e->position.x - scrx), (int)((2 * MIRROR_Z - e->position.z) - e->position.y - scry), 2 * PANEL_Z - z , f, drawmethod, ent_list_size * 100 - sortid);
