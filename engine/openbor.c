@@ -38128,6 +38128,7 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 	int load_count = 0;
 	int saved_select_screen = 0;
 	int is_first_select = 1;
+	s_player player_copy[MAX_PLAYERS];
 
 	savelevelinfo();
 
@@ -38153,7 +38154,8 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 		reset_playable_list(1);
 	}
 
-	// Reset memory for player array.
+	// Reset memory for player array, keeping the names for the hall of fame.
+	memcpy(player_copy, player, sizeof(*player) * MAX_PLAYERS);
 	memset(player, 0, sizeof(*player) * MAX_PLAYERS);
 
 	// Load game selected and a save game available?
@@ -38171,7 +38173,10 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 	for (i = 0; i < set->maxplayers; i++)
 	{
 		player[i].hasplayed = players[i];
-        if (player[i].hasplayed) strcpy(player[i].name, "dummy");
+		if (player[i].hasplayed)
+		{
+			strcpy(player[i].name, player_copy[i].name);
+		}
 	}
 
 	for (i = 0; i < set->maxplayers; i++)
@@ -38759,7 +38764,7 @@ void playgame(int *players,  unsigned which_set, int useSavedGame)
                 set->noselect = 0;
                 for(i = 0; i < set->maxplayers; i++) // reset skipselect
                 {
-                    if(le->skipselect[i])
+                    if(!le->skipselect[i])
                     {
                         skipselect[i][0] = 0;
                     }
