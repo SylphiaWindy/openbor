@@ -67,11 +67,13 @@ set(BOR_LDFLAGS ${SDL2_LIBRARIES} ${PNG_LIBRARIES} ${ZLIB_LIBRARIES} ${VPX_LIBRA
 ##############
 # VERSION.SH
 ##############
-ADD_CUSTOM_COMMAND(
-        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/engine/version.h
+# version.h lands in the source tree, so a plain OUTPUT dependency never
+# refires once the file exists and the build then reports a stale commit.
+# Regenerate it on every build instead.
+ADD_CUSTOM_TARGET(version_h ALL
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/engine
-        COMMAND bash version.sh)
-list(APPEND BOR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/engine/version.h)
+        COMMAND bash version.sh
+        BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/engine/version.h)
 
 #####################
 # OPTIONS
@@ -115,6 +117,7 @@ endif ()
 # OpenBOR executable
 #####################
 add_executable(${CMAKE_PROJECT_NAME} ${BOR_SRC})
+add_dependencies(${CMAKE_PROJECT_NAME} version_h)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${BOR_INC})
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE ${BOR_CFLAGS})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${BOR_LDFLAGS})
