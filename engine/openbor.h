@@ -2663,7 +2663,7 @@ typedef struct entity
 	bool					getting;							// Picking up item. ~~
 	bool					grabwalking;						// Walking while grappling. ~~
 	bool					hitwall;							// Blcoked by wall/platform/obstacle. ~~
-	bool					idling;								// ~~
+	e_idling_state			idling;								// ~~ bool collapses IDLING_ACTIVE away
 	bool					inbackpain;							// Playing back pain/fall/rise/riseattack/die animation. ~~
 	bool					inpain;								// Hit and block stun. ~~
 	bool					jumping;							// ~~
