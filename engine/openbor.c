@@ -36429,6 +36429,12 @@ void display_credits()
         font_printf(col1, s + v * m, 0, 0, "Gonzalo MVP");
         font_printf(col2, s + v * m, 0, 0, "Developer"); ++m;
 
+        // Build identity, bottom right. The content area ends at
+        // vRes - vShift / 2, matching the row spacing computed above.
+        font_printf(videomodes.hRes - fontmonowidth(0) * (int)strlen(VERSION) - 2,
+                    videomodes.vRes - videomodes.vShift / 2 - fontheight(0),
+                    0, 0, VERSION);
+
         update(2, 0);
 
         done |= (_time > finishtime);
