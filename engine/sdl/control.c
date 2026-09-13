@@ -945,8 +945,130 @@ int control_scankey()
 	return 0;
 }
 
+#ifdef __SWITCH__
+/*
+ * Vibration on Switch goes through libnx rather than SDL.
+ *
+ * SDL_HapticOpenFromJoystick opens nothing on this port, and the fallback,
+ * SDL_JoystickRumble, returns success while the pad stays still. Measured on
+ * firmware 22.5 with SDL 2.28.5: hidSendVibrationValues on the same pad in the
+ * same run does vibrate.
+ *
+ * Handheld and detached controllers are separate vibration devices, so port 0
+ * drives both and lets whichever one is attached respond.
+ */
+
+#define NX_VIB_PORTS    JOY_LIST_TOTAL
+#define NX_VIB_SETS     2   /* handheld and pad, for port 0 */
+
+static HidVibrationDeviceHandle nx_vib[NX_VIB_PORTS][NX_VIB_SETS][2];
+static int  nx_vib_sets[NX_VIB_PORTS];      /* how many of the two are live */
+static int  nx_vib_ready[NX_VIB_PORTS];     /* 0 untried, 1 done */
+static u32  nx_vib_until[NX_VIB_PORTS];     /* SDL tick to stop at, 0 idle */
+
+static void nx_vib_init(int port)
+{
+    HidNpadIdType id;
+    u32 style;
+    int sets = 0;
+
+    nx_vib_ready[port] = 1;
+    nx_vib_sets[port] = 0;
+
+    if(port < 0 || port >= NX_VIB_PORTS)
+    {
+        return;
+    }
+
+    id = (HidNpadIdType)(HidNpadIdType_No1 + port);
+    style = hidGetNpadStyleSet(id);
+
+    /*
+     * hidInitializeVibrationDevices takes one style tag, not a set, and the tag
+     * has to match how the controller is attached. Before any input has been
+     * seen the style reads back as 0, in which case JoyDual is the useful
+     * guess: the handles still come back usable.
+     */
+    if(R_SUCCEEDED(hidInitializeVibrationDevices(nx_vib[port][sets], 2, id,
+            (style & HidNpadStyleTag_NpadFullKey) ? HidNpadStyleTag_NpadFullKey
+                                                  : HidNpadStyleTag_NpadJoyDual)))
+    {
+        sets++;
+    }
+
+    if(port == 0 &&
+       R_SUCCEEDED(hidInitializeVibrationDevices(nx_vib[port][sets], 2,
+            HidNpadIdType_Handheld, HidNpadStyleTag_NpadHandheld)))
+    {
+        sets++;
+    }
+
+    nx_vib_sets[port] = sets;
+}
+
+static void nx_vib_send(int port, float amp)
+{
+    HidVibrationValue v[2];
+    int k;
+
+    for(k = 0; k < 2; k++)
+    {
+        v[k].amp_low   = amp;
+        v[k].freq_low  = 160.0f;
+        v[k].amp_high  = amp;
+        v[k].freq_high = 320.0f;
+    }
+
+    for(k = 0; k < nx_vib_sets[port]; k++)
+    {
+        hidSendVibrationValues(nx_vib[port][k], v, 2);
+    }
+}
+
+/* Vibration runs until it is told to stop, so expire it here, once a frame. */
+static void nx_vib_update(void)
+{
+    u32 now = SDL_GetTicks();
+    int port;
+
+    for(port = 0; port < NX_VIB_PORTS; port++)
+    {
+        if(nx_vib_until[port] && now >= nx_vib_until[port])
+        {
+            nx_vib_send(port, 0.0f);
+            nx_vib_until[port] = 0;
+        }
+    }
+}
+
+static void nx_vib_play(int port, float amp, int msec)
+{
+    if(port < 0 || port >= NX_VIB_PORTS || msec <= 0)
+    {
+        return;
+    }
+
+    if(!nx_vib_ready[port])
+    {
+        nx_vib_init(port);
+    }
+
+    if(!nx_vib_sets[port])
+    {
+        return;
+    }
+
+    nx_vib_send(port, amp);
+    nx_vib_until[port] = SDL_GetTicks() + (u32)msec;
+}
+#endif
+
 void control_update(s_playercontrols ** playercontrols, int numplayers)
 {
+#ifdef __SWITCH__
+    nx_vib_update();
+#endif
+
 	u64 k;
 	unsigned i;
 	int player;
@@ -1010,21 +1132,16 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 
 void control_rumble(int port, int ratio, int msec)
 {
-    #if SDL
+    #ifdef __SWITCH__
+    // Neither SDL path reaches the hardware here, so go to libnx directly.
+    nx_vib_play(port, ratio > 1 ? 1.0f : (float)ratio, msec);
+    #elif SDL
     if (joystick[port] != NULL)
     {
         if(joystick_haptic[port] != NULL)
         {
             SDL_HapticRumblePlay(joystick_haptic[port], ratio, msec);
         }
-	#if __SWITCH__	
-        else
-        {
-            // try joystick rumble
-            int freq = msec ? 30000 : 0;
-            SDL_JoystickRumble(joystick[port], freq, freq, msec);
-        }
-	#endif
-    }	
+    }
     #endif
 }
