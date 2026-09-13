@@ -61,7 +61,7 @@ file(GLOB BOR_SRC
         engine/source/webmlib/nestegg/*.c
         )
 
-set(BOR_CFLAGS -g -Wall -fsigned-char -fomit-frame-pointer -DSDL -DSDL2 -DWEBM -DOPENGL -DLOADGL -D__CMAKE__)
+set(BOR_CFLAGS -g -Wall -fsigned-char -fomit-frame-pointer -DSDL -DSDL2 -DWEBM -DOPENGL -DLOADGL -D__CMAKE__ -D_FILE_OFFSET_BITS=64)
 set(BOR_LDFLAGS ${SDL2_LIBRARIES} ${PNG_LIBRARIES} ${ZLIB_LIBRARIES} ${VPX_LIBRARIES} m)
 
 ##############
