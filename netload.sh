@@ -2,20 +2,46 @@
 # Push the engine to a Switch running hbmenu's netloader and launch it.
 #
 # On the Switch: open hbmenu and press Y to start the netloader.
-#   ./netload.sh              auto-discover by broadcast
-#   ./netload.sh 10.1.1.81    send to a known address
 #
-# The pak is read from the SD card as usual, so it does not need copying.
+#   ./netload.sh <ip> <dest>
+#
+#   ./netload.sh 10.1.1.81 FFLNS/FFLNS.nro
+#   NRO_DIR=build.dbg ./netload.sh 10.1.1.81 FFLNS/FFLNS.nro   (BAR_DEBUG build)
+#
+# <dest> is the destination path INCLUDING the file name, relative to hbmenu's
+# own root, which is sdmc:/switch. Getting it wrong fails in two distinct ways:
+#
+#   switch/FFLNS            file-extension/filename not recognized
+#                           nxlink sends this string verbatim as the file name
+#                           and never appends the basename, so hbmenu sees no
+#                           .nro extension.
+#   switch/FFLNS/FFLNS.nro  No such file or directory
+#                           hbmenu prepends its root, giving
+#                           /switch/switch/FFLNS/FFLNS.nro.
+#   FFLNS/FFLNS.nro         works.
+#
+# The destination has to be the directory the paks live in: on Switch the engine
+# leaves rootDir empty and looks for "Paks" relative to the working directory,
+# which is wherever the NRO sits.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-NRO="$HERE/build.switch/FFLNS.nro"
+NRO="$HERE/${NRO_DIR:-build.switch}/FFLNS.nro"
 IMAGE="nx-builder:latest"
 
 [ -f "$NRO" ] || { echo "not built yet: $NRO — run ./build-switch.sh first" >&2; exit 1; }
 
-ADDR_ARG=()
-[ $# -ge 1 ] && ADDR_ARG=(-a "$1")
+ADDR="${1:-}"
+SDPATH="${2:-}"
+
+ARGS=()
+[ -n "$ADDR" ]   && ARGS+=(-a "$ADDR")
+[ -n "$SDPATH" ] && ARGS+=(-p "$SDPATH")
+
+if [ -z "$SDPATH" ]; then
+    echo "warning: no destination given, the engine will look for Paks next to" >&2
+    echo "         wherever nxlink drops the NRO and will likely find none." >&2
+fi
 
 TTY_ARG=()
 [ -t 0 ] && [ -t 1 ] && TTY_ARG=(-it)
@@ -24,4 +50,4 @@ TTY_ARG=()
 # TCP connection back to it.
 exec docker run --rm "${TTY_ARG[@]}" --network host \
     -v "$HERE":/src -w /src \
-    "$IMAGE" nxlink -s "${ADDR_ARG[@]}" build.switch/FFLNS.nro
+    "$IMAGE" nxlink -s "${ARGS[@]}" "${NRO_DIR:-build.switch}/FFLNS.nro"
