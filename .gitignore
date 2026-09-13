@@ -18,3 +18,8 @@ tools/devkitpro/*
 # switch port
 .idea
 cmake-build*
+
+# Build directories used by build-switch.sh
+/build.switch/
+/build.debug/
+/build.dbg/
