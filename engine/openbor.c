@@ -36419,6 +36419,9 @@ void display_credits()
         font_printf(col1,  s + v * m, 0, 0, "PS Vita");
         font_printf(col2, s + v * m, 0, 0, "Plombo"); ++m;
 
+        font_printf(col1,  s + v * m, 0, 0, "Switch");
+        font_printf(col2, s + v * m, 0, 0, "Sylphia"); ++m;
+
         font_printf(_strmidx(1, "LNS Enhancements"), s + v * m,  1, 0, "LNS Enhancements"); ++m;
         font_printf(col1, s + v * m, 0, 0, "Hechelion");
         font_printf(col2, s + v * m, 0, 0, "Developer"); ++m;
