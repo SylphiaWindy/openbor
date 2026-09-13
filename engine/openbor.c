@@ -20208,6 +20208,7 @@ int testmove(entity *ent, float sx, float sz, float x, float z)
     entity *other = NULL, *platbelow = NULL;
     int wall, heightvar;
     float xdir, zdir;
+    float epsilon = 0.5f;
 
     xdir = x - sx;
     zdir = z - sz;
@@ -20236,16 +20237,25 @@ int testmove(entity *ent, float sx, float sz, float x, float z)
     }
 
     // screen checking
-    // Kratus (29-04-21) Reduced the "screen checking" range from 10 to 5 to avoid the entities to stuck in the edge of the screen
-    // This change was made because the "common_trymove" function also has another "screen checking" with a range of 10 too
-    // If the "testmove" function has a equal or bigger range than the "common_trymove" function, sometimes the entities will stuck
+    //
+    // The margin here has to be the same as the one in common_trymove. That
+    // function does not refuse an out of bounds move, it clamps the entity to
+    // the bound, computing position + (bound - position). In float arithmetic
+    // that can land a hair inside the bound, and a strict compare below then
+    // refuses every subsequent move, which is how an entity gets stuck against
+    // the edge of the screen. The epsilon absorbs the rounding.
+    //
+    // Kratus (29-04-21) worked around the same problem by reducing this margin
+    // from 10 to 5. That is reverted here: it left testmove and common_trymove
+    // disagreeing about where the bound is, and FFLNS is authored against an
+    // engine that uses 10 on both sides.
     if(ent->modeldata.subject_to_screen > 0)
     {
-        if(x < advancex + 5)
+        if((x + epsilon) < advancex + 10)
         {
             return 0;
         }
-        else if(x > advancex + (videomodes.hRes - 5))
+        else if((x - epsilon) > advancex + (videomodes.hRes - 10))
         {
             return 0;
         }
