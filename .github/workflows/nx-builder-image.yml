@@ -1,0 +1,44 @@
+# Publishes the Switch build image to ghcr.io.
+#
+# Separate from the release workflow so that releases pull a fixed image and
+# never fetch packages themselves. Rebuild when the Dockerfile changes, or to
+# pick up newer portlibs, by pushing a tag:
+#
+#   git tag image-2026-09-14 && git push sylphia image-2026-09-14
+#
+# Tag triggered like the release workflow, so nothing runs on ordinary pushes.
+name: Builder image
+
+on:
+  push:
+    tags:
+      - 'image-*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    name: Build and push
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Provided by Actions, so this needs no credential of its own.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: tools/switch
+          file: tools/switch/Dockerfile
+          push: true
+          # ghcr rejects capitals, and the owner has them.
+          tags: |
+            ghcr.io/sylphiawindy/nx-builder:latest
+            ghcr.io/sylphiawindy/nx-builder:${{ github.ref_name }}
