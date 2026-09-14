@@ -22,6 +22,10 @@
 #include "jniutils.h"
 #endif
 
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
+
 SDL_Joystick *joystick[JOY_LIST_TOTAL];         // SDL struct for joysticks
 SDL_Haptic *joystick_haptic[JOY_LIST_TOTAL];   // SDL haptic for joysticks
 static int usejoy;						        // To be or Not to be used?
@@ -182,7 +186,7 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
 					}
 				}
 				break;
-
+#ifndef __SWITCH__
 			case SDL_JOYAXISMOTION:
 				for(i=0; i<JOY_LIST_TOTAL; i++)
 				{
@@ -202,7 +206,7 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
 					}
 				}
 				break;
-
+#endif
             // PLUG AND PLAY
             case SDL_JOYDEVICEADDED:
                 if (ev.jdevice.which < JOY_LIST_TOTAL)
@@ -255,6 +259,19 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
 			// check buttons
 			for(j = 0; j < joysticks[i].NumButtons; j++)
             {
+#ifdef __SWITCH__
+                // we want "plus" or "minus" button to send start in single joycon mode
+                if(j == 10 || j == 11)
+                {
+                    joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j) << 10;
+                    continue;
+                }
+                // skip "plus and minus" combo key (?!)
+                else if(j == 34)
+                {
+                    continue;
+                }
+#endif
                 joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j) << j;
             }
 
@@ -473,6 +490,13 @@ void control_init(int joy_enable)
 	int i;
 
 	usejoy = joy_enable;
+
+#ifdef __SWITCH__
+	if(savedata.single_joycon_mode)
+		SDL_SetHint("SDL_HINT_SINGLE_JOYCONS_MODE", "1");
+	else
+		SDL_SetHint("SDL_HINT_SINGLE_JOYCONS_MODE", "0");
+#endif
 
 	//memset(joysticks, 0, sizeof(s_joysticks) * JOY_LIST_TOTAL);
 	for(i = 0; i < JOY_LIST_TOTAL; i++)

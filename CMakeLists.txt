@@ -7,6 +7,7 @@ option(BUILD_WIN    "Windows" OFF)
 option(BUILD_LINUX  "Linux" OFF)
 option(BUILD_DARWIN "MacOS" OFF)
 option(BUILD_WII    "Nintendo Wii Console" OFF)
+option(BUILD_SWITCH "Nintendo Switch Console" OFF)
 
 # Backends
 option(TARGET_ARCH "[X86,AMD64,ARM64,UNIVERSAL]" OFF)
@@ -73,8 +74,11 @@ add_executable(${PROJECT_NAME} ${SRC_FILES})
 add_dependencies(${PROJECT_NAME} VersionInfo)
 
 # Auto-Detect
-if(NOT (BUILD_WIN OR BUILD_LINUX OR BUILD_DARWIN OR BUILD_WII))
-  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(NOT (BUILD_WIN OR BUILD_LINUX OR BUILD_DARWIN OR BUILD_WII OR BUILD_SWITCH))
+  if(NINTENDO_SWITCH)
+    set(BUILD_SWITCH ON)
+    message("Build target not specified, BUILD_SWITCH=ON")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(BUILD_DARWIN ON)
     message("Build target not specified, BUILD_DARWIN=ON")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -98,6 +102,8 @@ elseif(BUILD_LINUX)
   include("cmake/linux.cmake")
 elseif(BUILD_WII)
   include("cmake/wii.cmake")
+elseif(BUILD_SWITCH)
+  include("cmake/switch.cmake")
 endif()
 
 # Include Optional Source Files
@@ -221,6 +227,8 @@ if(BUILD_WIN)
   include("cmake/windows-finalize.cmake")
 elseif(BUILD_DARWIN)
   include("cmake/macos-finalize.cmake")
+elseif(BUILD_SWITCH)
+  include("cmake/switch-finalize.cmake")
 endif()
 
 # Distribution Preperation

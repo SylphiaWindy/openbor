@@ -13,6 +13,9 @@
 #include <SDL_keycode.h>
 #include "joysticks.h"
 
+#ifdef __SWITCH__
+#include "control_switch.h"
+#else
 #define	CONTROL_ESC                 SDL_SCANCODE_ESCAPE
 #define	CONTROL_DEFAULT1_START		SDL_SCANCODE_RETURN
 #define	CONTROL_DEFAULT1_UP         SDL_SCANCODE_UP
@@ -27,6 +30,7 @@
 #define	CONTROL_DEFAULT1_FIRE6		SDL_SCANCODE_F
 #define	CONTROL_DEFAULT1_SCREENSHOT	SDL_SCANCODE_F12
 #define	CONTROL_DEFAULT1_ESC        SDL_SCANCODE_ESCAPE
+#endif
 
 #define	CONTROL_DEFAULT2_UP			((JOY_LIST_FIRST + 1) + JOY_MAX_INPUTS)
 #define	CONTROL_DEFAULT2_RIGHT		((JOY_LIST_FIRST + 2) + JOY_MAX_INPUTS)
@@ -69,6 +73,7 @@
 #define CONTROL_DEFAULT4_START		((JOY_LIST_FIRST + 11) + (JOY_MAX_INPUTS * 3))
 #define CONTROL_DEFAULT4_SCREENSHOT ((JOY_LIST_FIRST + 12) + (JOY_MAX_INPUTS * 3))
 #define	CONTROL_DEFAULT4_ESC        ((JOY_LIST_FIRST + 15) + (JOY_MAX_INPUTS * 3))
+#endif // __SWITCH__
 
 #define	CONTROL_NONE				((JOY_LIST_FIRST + 1) + (JOY_MAX_INPUTS * 99)) //Kratus (20-04-21) value used to clear all keys
 

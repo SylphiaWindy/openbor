@@ -22,3 +22,7 @@ tools/devkitpro/*
 engine/ios/Build
 **/.DS_Store
 tools/borpak/source/borpak
+
+# switch port
+.idea
+cmake-build*

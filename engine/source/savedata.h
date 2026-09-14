@@ -50,6 +50,9 @@ typedef struct
 #if ANDROID
     int is_touchpad_vibration_enabled;
 #endif
+#if __SWITCH__
+    int single_joycon_mode;
+#endif
 } s_savedata;
 
 #pragma pack()
