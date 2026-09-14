@@ -16,10 +16,10 @@
 //
 void filecache_init(
     int realfd,
-    int pakcdsectors,
-    int blocksize,
+    unsigned int pakcdsectors,
+    unsigned int blocksize,
     unsigned char blocks,
-    int vfds
+    unsigned int vfds
 );
 
 //
@@ -33,7 +33,7 @@ void filecache_term(void);
 //
 int filecache_readpakblock(
     unsigned char *dest,
-    int pakblock,
+    unsigned int pakblock,
     int startofs,
     int bytes,
     int blocking
@@ -42,14 +42,14 @@ int filecache_readpakblock(
 //
 // set up where the vfd pointers are
 //
-void filecache_setvfd(int vfd, int start, int block, int readahead);
+void filecache_setvfd(unsigned int vfd, unsigned int start, unsigned int block, unsigned int readahead);
 
 //
 // call this every now and then
 //
 void filecache_process(void);
 
-void filecache_wait_for_prebuffer(int vfd, int nblocks);
+void filecache_wait_for_prebuffer(unsigned int vfd, unsigned int nblocks);
 
 /////////////////////////////////////////////////////////////////////////////
 
