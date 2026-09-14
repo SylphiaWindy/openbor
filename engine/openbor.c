@@ -20,6 +20,9 @@
 PROF_ACC(prof_load_cached_model);
 PROF_ACC(prof_loadsprite2);
 PROF_ACC(prof_cache_model_sprites);
+PROF_ACC(prof_preload_cached_model);
+PROF_ACC(prof_buffer_pakfile);
+PROF_ACC(prof_update_loading);
 #include "soundmix.h"
 
 #define NaN 0xAAAAAAAA
@@ -907,7 +910,18 @@ static int buffer_file(char *filename, char **pbuffer, size_t *psize)
 
 
 // returns: 1 - succeeded 0 - failed
+static int buffer_pakfile_impl(char *filename, char **pbuffer, size_t *psize);
+
 int buffer_pakfile(char *filename, char **pbuffer, size_t *psize)
+{
+    int _p_r;
+    PROF_T0(_p_t);
+    _p_r = buffer_pakfile_impl(filename, pbuffer, psize);
+    prof_acc_add(&prof_buffer_pakfile, _p_t, (psize && _p_r == 1) ? (uint64_t)(*psize) : 0);
+    return _p_r;
+}
+
+static int buffer_pakfile_impl(char *filename, char **pbuffer, size_t *psize)
 {
     int handle;
     *psize = 0;
@@ -13325,6 +13339,9 @@ int load_models()
     printf("\nLoading models...............\tDone!\n");
     prof_log("load_models: %.3f ms total", PROF_SINCE(_p_lm));
     prof_acc_report(&prof_load_cached_model, 1);
+    prof_acc_report(&prof_preload_cached_model, 1);
+    prof_acc_report(&prof_buffer_pakfile, 1);
+    prof_acc_report(&prof_update_loading, 1);
     prof_acc_report(&prof_loadsprite2, 1);
     packfile_prof_report();
     prof_flush("models loaded");
@@ -13381,7 +13398,16 @@ void identify_selectable_players()
   }
 }
 
+static void preload_cached_model_impl(char *name);
+
 void preload_cached_model(char *name)
+{
+    PROF_T0(_p_t);
+    preload_cached_model_impl(name);
+    prof_acc_add(&prof_preload_cached_model, _p_t, 0);
+}
+
+static void preload_cached_model_impl(char *name)
 {
   char *filename, *buf, *command;
   char argbuf[MAX_ARG_LEN + 1] = {""};
@@ -16583,6 +16609,9 @@ lCleanup:
 
     prof_log("load_level(%s): %.3f ms total", filename, PROF_SINCE(_p_ll));
     prof_acc_report(&prof_load_cached_model, 1);
+    prof_acc_report(&prof_preload_cached_model, 1);
+    prof_acc_report(&prof_buffer_pakfile, 1);
+    prof_acc_report(&prof_update_loading, 1);
     prof_acc_report(&prof_loadsprite2, 1);
     packfile_prof_report();
     prof_flush("level loaded");
@@ -17750,7 +17779,16 @@ void drawstatus()
     }
 }
 
-void update_loading(s_loadingbar *s,  int value, int max)
+static void update_loading_impl(s_loadingbar *s, int value, int max);
+
+void update_loading(s_loadingbar *s, int value, int max)
+{
+    PROF_T0(_p_t);
+    update_loading_impl(s, value, max);
+    prof_acc_add(&prof_update_loading, _p_t, 0);
+}
+
+static void update_loading_impl(s_loadingbar *s,  int value, int max)
 {
     static unsigned int lasttick = 0;
     static unsigned int soundtick = 0;
