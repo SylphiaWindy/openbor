@@ -21,9 +21,9 @@
 
 /////////////////////////////////////////////////////////////////////////////
 
-static int filecache_blocksize;
-static int filecache_blocks;
-static int max_vfds;
+static unsigned int filecache_blocksize;
+static unsigned int filecache_blocks;
+static unsigned int max_vfds;
 
 //static int default_minimum_run_bytes = 98304;
 static int default_minimum_run_bytes = 131072;
@@ -36,7 +36,7 @@ static int default_minimum_run_bytes = 131072;
 static int real_pakfd;
 
 // total number of blocks in the pak
-static int total_pakblocks;
+static unsigned int total_pakblocks;
 
 // BLOCKSIZE * BLOCKS; be sure to 64-byte-align
 static unsigned char *filecache;
@@ -86,21 +86,21 @@ static void cacheblock_mark_used(unsigned n)
 
 // current read pointer (round down)
 // -1 if not open
-static int *vfd_readptr_pakblock;
+static unsigned int *vfd_readptr_pakblock;
 // desired readahead in blocks
-static int *vfd_desired_readahead_blocks;
+static unsigned int *vfd_desired_readahead_blocks;
 // starting block of each open vfd
 // these blocks are immune to being replaced in the cache
-static int *vfd_startptr_pakblock;
+static unsigned int *vfd_startptr_pakblock;
 
 // THIS IS TEMPORARY; DO NOT RELY ON THIS VALUE
-static int *vfd_blocks_available;
+static unsigned int *vfd_blocks_available;
 
 // requested read block
 static int request_read_pakblock = -1;
 
 // avoid going off the end of the track for gdroms
-static int filecache_maxcdsectors;
+static unsigned int filecache_maxcdsectors;
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -456,7 +456,7 @@ void filecache_process(void)
 // attempt to read a block
 // returns the number of bytes read or 0 on error
 //
-int filecache_readpakblock(unsigned char *dest, int pakblock, int startofs, int bytes, int blocking)
+int filecache_readpakblock(unsigned char *dest, unsigned int pakblock, int startofs, int bytes, int blocking)
 {
     int cacheblock;
     if(pakblock < 0 || pakblock >= total_pakblocks)
@@ -510,7 +510,7 @@ int filecache_readpakblock(unsigned char *dest, int pakblock, int startofs, int 
 //
 // set up where the vfd pointers are
 //
-void filecache_setvfd(int vfd, int start, int block, int readahead)
+void filecache_setvfd(unsigned int vfd, unsigned int start, unsigned int block, unsigned int readahead)
 {
     if(vfd < 0 || vfd >= max_vfds)
     {
@@ -600,7 +600,7 @@ void filecache_term()
 //
 // BLOCKS MUST BE 255 OR LESS
 //
-void filecache_init(int realfd, int pakcdsectors, int blocksize, unsigned char blocks, int vfds)
+void filecache_init(int realfd, unsigned int pakcdsectors, unsigned int blocksize, unsigned char blocks, unsigned int vfds)
 {
     int i;
 
@@ -688,7 +688,7 @@ void filecache_init(int realfd, int pakcdsectors, int blocksize, unsigned char b
 //
 // quick and dirty
 //
-void filecache_wait_for_prebuffer(int vfd, int nblocks)
+void filecache_wait_for_prebuffer(unsigned int vfd, unsigned int nblocks)
 {
     if(vfd_readptr_pakblock[vfd] < 0)
     {
