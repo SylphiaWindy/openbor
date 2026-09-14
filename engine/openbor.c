@@ -13455,6 +13455,14 @@ static void preload_cached_model_impl(char *name)
       }
       pos += getNewLineStart(buf + pos);
     }
+
+    // buffer_pakfile() allocates; nothing else owns buf once parsing stops.
+    // Without this every preloaded model file stays allocated for the life
+    // of the process -- 91.8 MB across 3,459 models on this mod.
+    if(buf)
+    {
+        free(buf);
+    }
   }
 }
 
@@ -16629,6 +16637,23 @@ void bar(int x, int y, int value, int maxvalue, s_barstatus *pstatus)
     int max = 100, len, alphabg = 0, bgindex, colourindex;
     int forex, forey, forew, foreh, bkw, bkh;
     s_drawmethod dm = plainmethod;
+
+    /*
+     * Diagnostic guard. A NULL pstatus here is a hard crash (data abort at
+     * the dereference below), and it is what kills this build right after
+     * startup. Report it and skip the bar instead, so the run gets far
+     * enough to be profiled.
+     */
+    if(!pstatus)
+    {
+        static int reported = 0;
+        if(reported < 20)
+        {
+            reported++;
+            printf("bar(): NULL pstatus (x=%d y=%d value=%d maxvalue=%d)\n", x, y, value, maxvalue);
+        }
+        return;
+    }
 
     x += pstatus->offset.x;
     y += pstatus->offset.y;
