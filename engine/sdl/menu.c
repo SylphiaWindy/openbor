@@ -325,6 +325,7 @@ static void StopBGM()
 
 static void PlayBGM()
 {
+	packfile_music_read_one(filelist, dListCurrentPosition+dListScrollPosition);
 	bgmPlay = packfile_music_play(filelist, bgmFile, bgmLoop, dListCurrentPosition, dListScrollPosition);
 }
 
@@ -669,6 +670,9 @@ static void drawBGMPlayer()
 #endif
 
 	if(!bgmPlay) bgmCurrent = dListCurrentPosition+dListScrollPosition;
+	// on demand: walking a large pak's name table costs seconds, and only the
+	// selected pak's tracks are ever read
+	packfile_music_read_one(filelist, bgmCurrent);
 	if(filename_len < 24)
 		safe_strncpy(bgmListing, filelist[bgmCurrent].filename, strlen(filelist[bgmCurrent].filename) - 4);
 	else
@@ -791,9 +795,6 @@ void Menu()
 		getAllLogs();
 		prof_log("Menu: getAllLogs %.3f ms", PROF_SINCE(_p_step));
 		_p_step = prof_us();
-		packfile_music_read(filelist, dListTotal);
-		prof_log("Menu: packfile_music_read %.3f ms  <== scans every pak", PROF_SINCE(_p_step));
-		_p_step = prof_us();
 		initMenu(1);
 		drawMenu();
 		prof_log("Menu: initMenu+drawMenu %.3f ms", PROF_SINCE(_p_step));
@@ -855,11 +856,13 @@ void Menu()
 				free(filelist);
 				filelist = NULL;
 			}
+			packfile_index_free();
 			borExit(0);
 		}
 	}
 	getBasePath(packfile, filelist[dListCurrentPosition+dListScrollPosition].filename, 1);
 	free(filelist);
+	packfile_index_free();
 
 	// Restore pixelformat default value.
 	pixelformat = PIXEL_x8;

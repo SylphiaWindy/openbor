@@ -53,6 +53,7 @@ typedef struct fileliststruct
     int nTracks;
     char bgmFileName[MAX_TRACKS][MAX_FILENAME_LEN];
     int bgmTrack;
+    int bgmScanned;     // the name table has been walked for this pak
     unsigned int bgmTracks[MAX_TRACKS];
 #ifdef SDL
     SDL_Surface *preview;
@@ -77,6 +78,8 @@ int seekpackfile(int handle, int offset, int whence);
 int pak_init();
 void pak_term();
 void packfile_mode(int mode);
+void packfile_music_read_one(fileliststruct *filelist, int index);
+void packfile_index_free(void);
 void packfile_prof_report(void);
 void packfile_prof_snapshot(prof_acc *open_out, prof_acc *read_out);
 int pakopen(const char *filename, int mode);
