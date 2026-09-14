@@ -57,17 +57,22 @@ void initSDL()
 	SDL_ShowCursor(SDL_DISABLE);
 	//atexit(SDL_Quit); //White Dragon: use SDL_Quit() into sdlport.c it's best practice!
 
-#ifdef LOADGL
+#if defined(LOADGL) && !defined(__SWITCH__)
 	if(SDL_GL_LoadLibrary(NULL) < 0)
 	{
 		printf("Warning: couldn't load OpenGL library (%s)\n", SDL_GetError());
 	}
 #endif
 
+#ifdef __SWITCH__
+    nativeWidth = 1280;
+    nativeHeight = 720;
+#else
 	SDL_GetCurrentDisplayMode(0, &video_info);
 	nativeWidth = video_info.w;
 	nativeHeight = video_info.h;
 	printf("debug:nativeWidth, nativeHeight, bpp, Hz  %d, %d, %d, %d\n", nativeWidth, nativeHeight, SDL_BITSPERPIXEL(video_info.format), video_info.refresh_rate);
+#endif
 
 	// Kratus (01-2023) Added a FPS limit option in the video settings
 	int maxFps = 200;
