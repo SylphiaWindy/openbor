@@ -24,11 +24,9 @@ jobs:
     # Prebuilt by the builder image workflow, with the portlibs already in it.
     # Fetching them here instead meant talking to pkg.devkitpro.org on every
     # release, and it answers 403 often enough to have failed one in three.
-    container:
-      image: ghcr.io/sylphiawindy/nx-builder:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    # Public, so it needs no credentials here. Built by hand rather than by CI;
+    # tools/switch/README.md says why.
+    container: ghcr.io/sylphiawindy/nx-builder:latest
 
     steps:
       - uses: actions/checkout@v4
