@@ -21,24 +21,16 @@ jobs:
   build:
     name: Build NRO
     runs-on: ubuntu-latest
-    container: devkitpro/devkita64:latest
+    # Prebuilt by the builder image workflow, with the portlibs already in it.
+    # Fetching them here instead meant talking to pkg.devkitpro.org on every
+    # release, and it answers 403 often enough to have failed one in three.
+    container:
+      image: ghcr.io/sylphiawindy/nx-builder:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - name: Install portlibs
-        run: |
-          dkp-pacman -Sy --noconfirm
-          dkp-pacman -S --noconfirm --needed \
-            switch-pkg-config \
-            switch-sdl2 \
-            switch-sdl2_gfx \
-            switch-libpng \
-            switch-zlib \
-            switch-libogg \
-            switch-libvorbisidec \
-            switch-libvpx \
-            switch-mesa \
-            switch-glad
-
       - uses: actions/checkout@v4
         with:
           # The version comes from the commit count, so the whole history has
@@ -55,9 +47,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build.switch -j"$(nproc)"
 
-      # The configure step already prints the version this was stamped with.
       - name: Report what was built
-        run: ls -l build.switch/*.nro
+        run: |
+          ls -l build.switch/*.nro
+          strings build.switch/*.nro | grep -m1 '^OpenBoR v' || true
 
       - uses: actions/upload-artifact@v4
         with:
