@@ -41579,6 +41579,7 @@ void openborMain(int argc, char **argv)
     printf("Game Selected: %s\n\n", packfile);
     loadsettings();
     startup();
+    printf("[intro] startup() returned\n");
 	bothnewkeys = 0;
 
     if(skiptoset < 0)
@@ -41593,15 +41594,21 @@ void openborMain(int argc, char **argv)
         }
         else
         {
+            printf("[intro] load_cached_background(data/bgs/logo)\n");
             load_cached_background("data/bgs/logo");
+            printf("[intro] logo background loaded\n");
         }
 
+        printf("[intro] logo wait loop: enter\n");
         while(_time < GAME_SPEED * 6 && !(bothnewkeys & (FLAG_ANYBUTTON | FLAG_ESC)))
         {
             update(0, 0);
         }
+        printf("[intro] logo wait loop: done\n");
 
+        printf("[intro] music(data/music/remix)\n");
         music("data/music/remix", 1, 0);
+        printf("[intro] music started\n");
 
         // New alternative scene path for PSP
         if(custScenes != NULL)
@@ -41612,9 +41619,12 @@ void openborMain(int argc, char **argv)
         }
         else
         {
+            printf("[intro] playscene(data/scenes/logo.txt)\n");
             playscene("data/scenes/logo.txt");
+            printf("[intro] logo scene done\n");
         }
     }
+    printf("[intro] clearscreen, entering title loop\n");
     clearscreen(background);
 
     while(!quit)
@@ -41632,7 +41642,9 @@ void openborMain(int argc, char **argv)
                 }
                 else
                 {
+                    printf("[intro] playscene(data/scenes/intro.txt)\n");
                     playscene("data/scenes/intro.txt");
+                    printf("[intro] intro scene done\n");
                 }
                 update(0, 0);
                 introtime = _time + GAME_SPEED * 20;
