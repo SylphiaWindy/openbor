@@ -544,6 +544,15 @@ static void drawMenu()
 	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "A2: BGM Player");
 	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "J: View Logs");
 	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "S: Quit Game");
+#elif __SWITCH__
+	// Keyboard letters mean nothing on a pad. These follow the defaults in
+	// control_switch.h: attack is A, attack2 is B, jump is X, special is Y,
+	// and the menu starts on attack or start, opens the player on attack2,
+	// the logs on jump and quits on special.
+	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: Start Game");
+	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "B: BGM Player");
+	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "X: View Logs");
+	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "Y: Quit Game");
 #else
 	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "%s: Start Game", control_getkeyname(savedata.keys[0][SDID_ATTACK]));
 	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "%s: BGM Player", control_getkeyname(savedata.keys[0][SDID_ATTACK2]));
