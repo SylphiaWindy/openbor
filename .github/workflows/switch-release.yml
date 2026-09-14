@@ -55,10 +55,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build.switch -j"$(nproc)"
 
+      # The configure step already prints the version this was stamped with.
       - name: Report what was built
-        run: |
-          ls -l build.switch/*.nro
-          strings build.switch/*.nro | grep -m1 '^OpenBoR v' || true
+        run: ls -l build.switch/*.nro
 
       - uses: actions/upload-artifact@v4
         with:
