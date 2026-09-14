@@ -164,6 +164,13 @@ endif ()
 # OpenBOR executable
 #####################
 add_executable(${CMAKE_PROJECT_NAME} ${BOR_SRC})
+
+# Diagnostic startup/load profiler (engine/source/gamelib/prof.c).
+# Turn OFF to compile every probe away.
+option(BOR_PROF "Build with the startup/load profiler" ON)
+if(BOR_PROF)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BOR_PROF)
+endif()
 add_dependencies(${CMAKE_PROJECT_NAME} version_h)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${BOR_INC})
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE ${BOR_CFLAGS})

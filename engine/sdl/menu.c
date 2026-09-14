@@ -27,6 +27,7 @@
 #include "../resources/logviewer_320x240_png.h"
 
 #include <dirent.h>
+#include "prof.h"
 
 extern s_videomodes videomodes;
 extern s_screen* vscreen;
@@ -266,6 +267,7 @@ static s_screen *getPreview(char *filename)
 {
 	s_screen *title = NULL;
 	s_screen *scale = NULL;
+	PROF_T0(_p_prev);
 	// Grab current path and filename
 	getBasePath(packfile, filename, 1);
 	// Create & Load & Scale Image
@@ -286,6 +288,7 @@ static s_screen *getPreview(char *filename)
 	strncpy(packfile,"Menu.xxx",MAX_FILENAME_LEN);
 
 	freescreen(&title);
+	prof_log("getPreview(%s): %.3f ms", filename, PROF_SINCE(_p_prev));
 	return scale;
 }
 
@@ -748,16 +751,34 @@ void Menu()
 {
 	int done = 0;
 	int ctrl = 0;
+	PROF_T0(_p_menu);
+	PROF_T0(_p_step);
 	loadsettings();
+	prof_log("Menu: loadsettings %.3f ms", PROF_SINCE(_p_step));
+	_p_step = prof_us();
 	drawLogo();
+	prof_log("Menu: drawLogo %.3f ms", PROF_SINCE(_p_step));
 	dListCurrentPosition = 0;
-	if((dListTotal = findPaks()) != 1)
+	_p_step = prof_us();
+	dListTotal = findPaks();
+	prof_log("Menu: findPaks %.3f ms, %d pak(s)", PROF_SINCE(_p_step), dListTotal);
+	if(dListTotal != 1)
 	{
+		_p_step = prof_us();
 		sortList();
+		prof_log("Menu: sortList %.3f ms", PROF_SINCE(_p_step));
+		_p_step = prof_us();
 		getAllLogs();
+		prof_log("Menu: getAllLogs %.3f ms", PROF_SINCE(_p_step));
+		_p_step = prof_us();
 		packfile_music_read(filelist, dListTotal);
+		prof_log("Menu: packfile_music_read %.3f ms  <== scans every pak", PROF_SINCE(_p_step));
+		_p_step = prof_us();
 		initMenu(1);
 		drawMenu();
+		prof_log("Menu: initMenu+drawMenu %.3f ms", PROF_SINCE(_p_step));
+		prof_log("Menu: visible after %.3f ms", PROF_SINCE(_p_menu));
+		prof_flush("menu visible");
 		pControl = ControlMenu;
 
 		while(!done)

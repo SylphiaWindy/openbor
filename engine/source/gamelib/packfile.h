@@ -19,6 +19,7 @@
 #include <unistd.h>
 #define O_BINARY 0
 #endif
+#include "prof.h"
 
 #ifdef SDL
 #include <SDL.h>
@@ -76,6 +77,8 @@ int seekpackfile(int handle, int offset, int whence);
 int pak_init();
 void pak_term();
 void packfile_mode(int mode);
+void packfile_prof_report(void);
+void packfile_prof_snapshot(prof_acc *open_out, prof_acc *read_out);
 int pakopen(const char *filename, int mode);
 int pakread(int fd, void *buf, int len);
 void pakclose(int fd);

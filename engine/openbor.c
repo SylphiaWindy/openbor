@@ -15,6 +15,11 @@
 #include "commands.h"
 #include "models.h"
 #include "translation.h"
+#include "prof.h"
+
+PROF_ACC(prof_load_cached_model);
+PROF_ACC(prof_loadsprite2);
+PROF_ACC(prof_cache_model_sprites);
 #include "soundmix.h"
 
 #define NaN 0xAAAAAAAA
@@ -4219,7 +4224,18 @@ void load_layer(char *filename, char *maskfilename, int index)
 }
 
 
+static s_sprite *loadsprite2_impl(char *filename, int *width, int *height);
+
 s_sprite *loadsprite2(char *filename, int *width, int *height)
+{
+    s_sprite *_p_r;
+    PROF_T0(_p_t);
+    _p_r = loadsprite2_impl(filename, width, height);
+    prof_acc_add(&prof_loadsprite2, _p_t, 0);
+    return _p_r;
+}
+
+static s_sprite *loadsprite2_impl(char *filename, int *width, int *height)
 {
     size_t size;
     s_bitmap *bitmap = NULL;
@@ -5940,7 +5956,16 @@ void addFreeType(s_model *m, e_ModelFreetype t)
     m->freetypes |= t;
 }
 
+static void cache_model_sprites_impl(s_model *m, int ld);
+
 void cache_model_sprites(s_model *m, int ld)
+{
+    PROF_T0(_p_t);
+    cache_model_sprites_impl(m, ld);
+    prof_acc_add(&prof_cache_model_sprites, _p_t, 0);
+}
+
+static void cache_model_sprites_impl(s_model *m, int ld)
 {
     int i, f, instance;
     s_anim *anim;
@@ -9224,7 +9249,24 @@ void update_model_loadflag(s_model *model, char unload)
     model->unload = unload;
 }
 
+static s_model *load_cached_model_impl(char *name, char *owner, char unload, bool quickload);
+
 s_model *load_cached_model(char *name, char *owner, char unload, bool quickload)
+{
+    static int _p_depth = 0;
+    s_model *_p_r;
+    PROF_T0(_p_t);
+    _p_depth++;
+    _p_r = load_cached_model_impl(name, owner, unload, quickload);
+    if(--_p_depth == 0)
+    {
+        // only top-level calls, so nested models are not counted twice
+        prof_acc_add(&prof_load_cached_model, _p_t, 0);
+    }
+    return _p_r;
+}
+
+static s_model *load_cached_model_impl(char *name, char *owner, char unload, bool quickload)
 {
 
     #define LOG_CMD_TITLE   "%-20s"
@@ -13064,6 +13106,8 @@ void load_model_constants()
 // Load / cache all models
 int load_models()
 {
+    PROF_T0(_p_lm);
+    prof_log("load_models: start");
     char filename[MAX_BUFFER_LEN] = "data/models.txt";
     int i;
     char *buf;
@@ -13279,6 +13323,11 @@ int load_models()
         }
     }
     printf("\nLoading models...............\tDone!\n");
+    prof_log("load_models: %.3f ms total", PROF_SINCE(_p_lm));
+    prof_acc_report(&prof_load_cached_model, 1);
+    prof_acc_report(&prof_loadsprite2, 1);
+    packfile_prof_report();
+    prof_flush("models loaded");
 
 
     if(buf)
@@ -15059,6 +15108,7 @@ void unload_level()
 {
     s_model *temp;
     int i;
+    PROF_T0(_p_ul);
 
     kill_all();
     unload_background();
@@ -15135,6 +15185,7 @@ void unload_level()
     light.x = 128;
     light.y = 64;
     gfx_y_offset = gfx_x_offset = gfx_y_offset_adj = 0;    // Added so select screen graphics display correctly
+    prof_log("unload_level: %.3f ms", PROF_SINCE(_p_ul));
 }
 
 
@@ -15248,6 +15299,7 @@ void generate_basemap(int map_index, float rx, float rz, float x_size, float z_s
 
 void load_level(char *filename)
 {
+    PROF_T0(_p_ll);
     char *buf = NULL;
     size_t size, len, sblen;
     ptrdiff_t pos, oldpos;
@@ -16528,6 +16580,12 @@ lCleanup:
     {
         borShutdown(1, "ERROR: load_level, file %s, line %d, message: %s", filename, line, errormessage);
     }
+
+    prof_log("load_level(%s): %.3f ms total", filename, PROF_SINCE(_p_ll));
+    prof_acc_report(&prof_load_cached_model, 1);
+    prof_acc_report(&prof_loadsprite2, 1);
+    packfile_prof_report();
+    prof_flush("level loaded");
 }
 
 
@@ -35999,27 +36057,121 @@ void free_input_recorder()
     }
 }
 
+static void update_impl(int ingame, int usevwait);
+
 void update(int ingame, int usevwait)
+{
+#ifdef BOR_PROF
+    static unsigned int _p_frame = 0;
+    static unsigned int _p_hitches = 0;
+    static int          _p_depth = 0;
+    static uint64_t     _p_nested_us = 0;
+    static unsigned int _p_nested_n = 0;
+    static prof_acc _p_prev_open, _p_prev_read;
+    static prof_acc _p_prev_sprite;
+    prof_acc now_open, now_read;
+    uint64_t _p_t0;
+    double dt, self;
+
+    // update() is re-entrant: pausemenu() and backto_mainmenu() are called
+    // from inside update_impl() and drive their own update() loops.  A nested
+    // call would reset the marks and phases the outer frame is still filling
+    // in, and the outer frame would be charged for however long the player
+    // left the pause menu open -- which is exactly what the first "hitches"
+    // turned out to be.  Time nested calls separately and subtract them.
+    _p_depth++;
+    if(_p_depth > 1)
+    {
+        _p_t0 = prof_us();
+        update_impl(ingame, usevwait);
+        if(_p_depth == 2)
+        {
+            _p_nested_us += prof_us() - _p_t0;
+            _p_nested_n++;
+        }
+        _p_depth--;
+        return;
+    }
+
+    _p_nested_us = 0;
+    _p_nested_n = 0;
+    prof_phase_reset();
+    prof_mark_reset();
+    _p_t0 = prof_us();
+    update_impl(ingame, usevwait);
+    _p_depth--;
+
+    dt = PROF_SINCE(_p_t0);
+    self = dt - (double)_p_nested_us / 1000.0;
+    if(ingame)
+    {
+        _p_frame++;
+    }
+    if(ingame && _p_nested_n && dt > PROF_HITCH_MS)
+    {
+        // a nested loop held the frame open; real, but not a stall
+        prof_log("  nested frame %6u: %.3f ms wall, %u nested update() call(s) = %.3f ms, self %.3f ms",
+                 _p_frame, dt, _p_nested_n, (double)_p_nested_us / 1000.0, self);
+    }
+    else if(ingame && self > PROF_HITCH_MS)
+    {
+        packfile_prof_snapshot(&now_open, &now_read);
+        prof_log("  HITCH frame %6u: %.3f ms"
+                 " | loadsprite2 +%llu calls/+%.3f ms"
+                 " | openpackfile +%llu calls/+%.3f ms"
+                 " | readpackfile +%llu bytes/+%.3f ms",
+                 _p_frame, self,
+                 (unsigned long long)(prof_loadsprite2.calls - _p_prev_sprite.calls),
+                 (prof_loadsprite2.us - _p_prev_sprite.us) / 1000.0,
+                 (unsigned long long)(now_open.calls - _p_prev_open.calls),
+                 (now_open.us - _p_prev_open.us) / 1000.0,
+                 (unsigned long long)(now_read.bytes - _p_prev_read.bytes),
+                 (now_read.us - _p_prev_read.us) / 1000.0);
+        prof_phase_report();
+        prof_mark_report(5.0);
+        _p_prev_sprite = prof_loadsprite2;
+        _p_prev_open = now_open;
+        _p_prev_read = now_read;
+        if(++_p_hitches >= 200)
+        {
+            _p_hitches = 0;
+            prof_flush("hitches");
+        }
+    }
+    else if(ingame)
+    {
+        // keep the baselines current so a hitch reports only its own work
+        packfile_prof_snapshot(&_p_prev_open, &_p_prev_read);
+        _p_prev_sprite = prof_loadsprite2;
+    }
+#else
+    update_impl(ingame, usevwait);
+#endif
+}
+
+static void update_impl(int ingame, int usevwait)
 {
     int i = 0;
     int p_keys = 0;
 
-    getinterval();
+    PROF_MARK("input");
+    PROF_PHASE(PROF_PH_INPUT, getinterval());
     if(playrecstatus->status == A_REC_PLAY && !_pause && level) if ( !playRecordedInputs() ) stopRecordInputs();
-    inputrefresh(playrecstatus->status);
+    PROF_PHASE(PROF_PH_INPUT, inputrefresh(playrecstatus->status));
     if(playrecstatus->status == A_REC_REC && !_pause && level) if ( !recordInputs() ) stopRecordInputs();
 
     if ((!_pause && ingame == 1) || alwaysupdate)
     {
-        execute_updatescripts();
+        PROF_PHASE(PROF_PH_SCRIPTS, execute_updatescripts());
     }
 
+    PROF_MARK("logic");
     newtime = 0;
     if(!_pause)
     {
         if(ingame == 1 || inScreen)
         {
-            execute_keyscripts();
+            PROF_PHASE(PROF_PH_SCRIPTS, execute_keyscripts());
         }
 
         if((level_completed && level->boss_slow == BOSS_SLOW_ON && !tospeedup) || slowmotion.toggle > SLOW_MOTION_OFF)
@@ -36052,7 +36204,7 @@ void update(int ingame, int usevwait)
         {
             if(ingame == 1)
             {
-                update_scroller();
+                PROF_PHASE(PROF_PH_BG, update_scroller());
                 if(!freezeall)
                 {
                     int all_p_alive = 0;
@@ -36093,7 +36245,7 @@ void update(int ingame, int usevwait)
                         }
                     }
                 }
-                update_scrolled_bg();
+                PROF_PHASE(PROF_PH_BG, update_scrolled_bg());
                 if(level->type != 2)
                 {
                     updatestatus();
@@ -36101,7 +36253,7 @@ void update(int ingame, int usevwait)
             }
             if(ingame == 1 || inScreen)
             {
-                update_ents();
+                PROF_PHASE(PROF_PH_ENTS, update_ents());
             }
             ++_time;
         }
@@ -36110,22 +36262,25 @@ void update(int ingame, int usevwait)
 
     /************ gfx queueing ************/
 
+    PROF_MARK("clearscreen");
     clearscreen(vscreen);
 
+    PROF_MARK("hud");
     if(ingame == 1 && !_pause)
     {
-        draw_scrolled_bg();
+        PROF_PHASE(PROF_PH_BG, draw_scrolled_bg());
         if(level->type != 2)
         {
-            predrawstatus();
+            PROF_PHASE(PROF_PH_HUD, predrawstatus());
         }
         if(level->type != 2)
         {
-            drawstatus();
+            PROF_PHASE(PROF_PH_HUD, drawstatus());
         }
-        draw_textobjs();
+        PROF_PHASE(PROF_PH_HUD, draw_textobjs());
     }
 
+    PROF_MARK("bgscreen");
     if(!ingame)
     {
         if(background)
@@ -36134,6 +36289,7 @@ void update(int ingame, int usevwait)
         }
     }
 
+    PROF_MARK("display_ents");
     // entity sprites queueing
     if(ingame == 1 || inScreen)
         if(!_pause)
@@ -36141,12 +36297,14 @@ void update(int ingame, int usevwait)
             display_ents();
         }
 
+    PROF_MARK("updatedscripts");
     /************ updated script  ************/
     if(ingame == 1 || alwaysupdate)
     {
-        execute_updatedscripts();
+        PROF_PHASE(PROF_PH_SCRIPTS, execute_updatedscripts());
     }
 
+    PROF_MARK("playerloop");
     for(i = 0; i < MAX_PLAYERS; i++)
     {
         if (player[i].ent && (player[i].newkeys & FLAG_START))
@@ -36174,6 +36332,7 @@ void update(int ingame, int usevwait)
             return;
         }
     }
+    PROF_MARK("mainmenucheck");
     if( ingame == 1 && (goto_mainmenu_flag&1) )
     {
         backto_mainmenu();
@@ -36182,13 +36341,17 @@ void update(int ingame, int usevwait)
 
     /********** update screen **************/
 
-    spriteq_draw(vscreen, 0, MIN_INT, MAX_INT, 0, 0); // notice, always draw sprites at the very end of other methods
+    PROF_MARK("spriteq_draw");
+    // notice, always draw sprites at the very end of other methods
+    PROF_PHASE(PROF_PH_SPRITEQ, spriteq_draw(vscreen, 0, MIN_INT, MAX_INT, 0, 0));
 
+    PROF_MARK("screenshot");
     if(_pause != 2 && !noscreenshot && (bothnewkeys & FLAG_SCREENSHOT))
     {
         screenshot(vscreen, getpal, 1);
     }
 
+    PROF_MARK("debug");
     // Debug stuff, should not appear on screenshot
     if(debug_time == 0xFFFFFFFF)
     {
@@ -36215,15 +36378,20 @@ void update(int ingame, int usevwait)
 #endif
     }
 
+    PROF_MARK("vwait+present");
     if(usevwait)
     {
-        vga_vwait();
+        PROF_PHASE(PROF_PH_VWAIT, vga_vwait());
     }
-    video_copy_screen(vscreen);
-    spriteq_clear();
+    PROF_PHASE(PROF_PH_PRESENT, video_copy_screen(vscreen));
+    PROF_PHASE(PROF_PH_PRESENT, spriteq_clear());
 
-    check_music();
-    sound_update_music();
+    // check_music() is where a queued track actually gets opened and decoded,
+    // which is synchronous and does not go through the counted packfile path
+    PROF_MARK("music");
+    PROF_PHASE(PROF_PH_MUSIC, check_music());
+    PROF_PHASE(PROF_PH_MUSIC, sound_update_music());
+    PROF_MARK("end");
 }
 
 
@@ -36745,14 +36913,20 @@ void startup()
 {
     int i;
 
-    printf("FileCaching System Init......\t");
-    if(pak_init())
     {
-        printf("Enabled\n");
-    }
-    else
-    {
-        printf("Disabled\n");
+        PROF_T0(_p_pi);
+        printf("FileCaching System Init......\t");
+        if(pak_init())
+        {
+            printf("Enabled\n");
+            prof_log("startup: pak_init ENABLED (cached header), %.3f ms", PROF_SINCE(_p_pi));
+        }
+        else
+        {
+            printf("Disabled\n");
+            prof_log("startup: pak_init DISABLED (linear header scan per open!), %.3f ms",
+                     PROF_SINCE(_p_pi));
+        }
     }
 
 #if PSP
@@ -37897,18 +38071,34 @@ static void check_victory_pose()
 int playlevel(char *filename)
 {
     int i, type, p_alive = 0;
+    PROF_T0(_p_pl);
+    PROF_T0(_p_st);
+
+    prof_log("playlevel(%s): start", filename);
 
     kill_all();
+    prof_log("  playlevel: kill_all %.3f ms", PROF_SINCE(_p_st));
+    _p_st = prof_us();
 
     savelevelinfo(); // just in case we lose them after level is freed
+    prof_log("  playlevel: savelevelinfo %.3f ms", PROF_SINCE(_p_st));
+    _p_st = prof_us();
 
     load_level(filename);
+    prof_log("  playlevel: load_level %.3f ms", PROF_SINCE(_p_st));
+    _p_st = prof_us();
 
     if(!nosave)
     {
         saveGameFile();
+        prof_log("  playlevel: saveGameFile %.3f ms", PROF_SINCE(_p_st));
+        _p_st = prof_us();
         saveHighScoreFile();
+        prof_log("  playlevel: saveHighScoreFile %.3f ms", PROF_SINCE(_p_st));
+        _p_st = prof_us();
         saveScriptFile();
+        prof_log("  playlevel: saveScriptFile %.3f ms", PROF_SINCE(_p_st));
+        _p_st = prof_us();
     }
     nosave = 0;
 
@@ -37941,6 +38131,11 @@ int playlevel(char *filename)
     {
         Script_Execute(&(level->level_script));
     }
+
+    prof_log("  playlevel: spawn+scripts %.3f ms", PROF_SINCE(_p_st));
+    prof_log("playlevel(%s): black screen total %.3f ms", filename, PROF_SINCE(_p_pl));
+    prof_flush("level started");
+    _p_st = prof_us();
 
     while(!endgame)
     {
@@ -38017,7 +38212,10 @@ int playlevel(char *filename)
     }
     sound_stopall_sample();
 
+    prof_log("playlevel(%s): gameplay %.3f ms", filename, PROF_SINCE(_p_st));
     unload_level();
+    prof_acc_report(&prof_cache_model_sprites, 1);
+    prof_flush("level ended");
 
     // Are any players alive?
 	for(i = 0; i < MAX_PLAYERS; i++)

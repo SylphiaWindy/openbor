@@ -36,6 +36,11 @@
 #include "soundmix.h"
 #include "savedata.h"
 #include "List.h"
+#include "prof.h"
+
+PROF_ACC(prof_openpackfile);
+PROF_ACC(prof_readpackfile);
+PROF_ACC(prof_openPackfile_scan);   // header entries walked by the uncached path
 
 #if WIN || LINUX
 #include <dirent.h>
@@ -407,7 +412,13 @@ int openpackfile(const char *filename, const char *packfilename)
     }
     printf ("openpackfile called: f: %s, p: %s, dest: %s\n", filename, packfilename, pointsto);
 #endif
-    return pOpenPackfile(filename, packfilename);
+    {
+        int _p_r;
+        PROF_T0(_p_t);
+        _p_r = pOpenPackfile(filename, packfilename);
+        prof_acc_add(&prof_openpackfile, _p_t, 0);
+        return _p_r;
+    }
 }
 
 int openPackfile(const char *filename, const char *packfilename)
@@ -558,6 +569,9 @@ int openPackfile(const char *filename, const char *packfilename)
     // Search for filename
     while(read(handle, &pn, sizeof(pn)) > 12)
     {
+#ifdef BOR_PROF
+        prof_openPackfile_scan.calls++;
+#endif
         pn.filesize = SwapLSB32(pn.filesize);
         pn.filestart = SwapLSB32(pn.filestart);
         pn.pns_len = SwapLSB32(pn.pns_len);
@@ -741,7 +755,31 @@ int openPackfileCached(const char *filename, const char *packfilename)
 
 int readpackfile(int handle, void *buf, int len)
 {
-    return pReadPackfile(handle, buf, len);
+    int _p_r;
+    PROF_T0(_p_t);
+    _p_r = pReadPackfile(handle, buf, len);
+    prof_acc_add(&prof_readpackfile, _p_t, _p_r > 0 ? (uint64_t)_p_r : 0);
+    return _p_r;
+}
+
+void packfile_prof_snapshot(prof_acc *open_out, prof_acc *read_out)
+{
+    if(open_out)
+    {
+        *open_out = prof_openpackfile;
+    }
+    if(read_out)
+    {
+        *read_out = prof_readpackfile;
+    }
+}
+
+void packfile_prof_report(void)
+{
+    prof_log("  packfile I/O since last report:");
+    prof_acc_report(&prof_openpackfile, 1);
+    prof_acc_report(&prof_readpackfile, 1);
+    prof_acc_report(&prof_openPackfile_scan, 1);
 }
 
 int readPackfile(int handle, void *buf, int len)
@@ -1400,11 +1438,14 @@ void packfile_music_read(fileliststruct *filelist, int dListTotal)
     int len, i;
     unsigned int off;
     char pack[4], *p = NULL;
+    PROF_T0(_p_all);
     for(i = 0; i < dListTotal; i++)
     {
         getBasePath(packfile, filelist[i].filename, 1);
         if(stristr(packfile, ".pak"))
         {
+            PROF_T0(_p_pak);
+            unsigned int _p_entries = 0;
             memset(filelist[i].bgmTracks, 0, MAX_TRACKS * sizeof(unsigned int));
             filelist[i].nTracks = 0;
             fd = fopen(packfile, "rb");
@@ -1430,6 +1471,7 @@ void packfile_music_read(fileliststruct *filelist, int dListTotal)
             }
             while((len = fread(&pn, 1, sizeof(pn), fd)) > 12)
             {
+                _p_entries++;
                 p = strrchr(pn.namebuf, '.');
                 if((p && (!stricmp(p, ".bor") || !stricmp(p, ".ogg"))) || (stristr(pn.namebuf, "music")))
                 {
@@ -1452,9 +1494,13 @@ nextpak:
                 }
             }
 closepak:
+            prof_log("  music scan [%2d] %-40s %7u entries, %2d track(s), %.3f ms",
+                     i, filelist[i].filename, _p_entries, filelist[i].nTracks,
+                     PROF_SINCE(_p_pak));
             fclose(fd);
         }
     }
+    prof_log("  music scan total: %.3f ms for %d pak(s)", PROF_SINCE(_p_all), dListTotal);
 }
 
 /////////////////////////////////////////////////////////////////////////////

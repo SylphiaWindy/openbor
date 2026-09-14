@@ -11,6 +11,7 @@
 #include "ram.h"
 #include "video.h"
 #include "menu.h"
+#include "prof.h"
 #include <time.h>
 #include <unistd.h>
 
@@ -115,8 +116,11 @@ int main(int argc, char *argv[])
     nx_sock = nxlinkStdio();
 #endif
 
+	PROF_T0(_p_boot);
+	prof_log("main: entered");
 	setSystemRam();
 	initSDL();
+	prof_log("main: initSDL done, %.3f ms", PROF_SINCE(_p_boot));
 
 	packfile_mode(0);
 
@@ -150,6 +154,7 @@ int main(int argc, char *argv[])
 	dirExists(savesDir, 1);
 	dirExists(logsDir, 1);
 	dirExists(screenShotsDir, 1);
+	prof_log("main: dirExists x4 done, %.3f ms", PROF_SINCE(_p_boot));
 
    // Test command line argument to launch MOD
    int romArg = 0;
@@ -162,6 +167,8 @@ int main(int argc, char *argv[])
 
    if(!romArg) {
        Menu();
+       prof_log("main: Menu() returned, %.3f ms since boot", PROF_SINCE(_p_boot));
+       prof_flush("menu closed");
    }
 
 #ifndef SKIP_CODE
