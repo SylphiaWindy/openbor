@@ -527,6 +527,31 @@ const char* PC_GetJoystickKeyName(int portnum, int keynum)
 	int firstHat = firstAxis + (2*joysticks[portnum].NumAxes);
 	int firstUnknown = firstHat + (4*joysticks[portnum].NumHats);
 
+#ifdef __SWITCH__
+	/*
+	 * Name the buttons the system actually has, in libnx's order. The generic
+	 * table offers "P1 Button 1" and so on, which says nothing about which key
+	 * is being bound.
+	 */
+	{
+		static const char *switch_names[] = {
+			"A",          "B",          "X",           "Y",
+			"L Stick",    "R Stick",    "L",           "R",
+			"ZL",         "ZR",         "Plus",        "Minus",
+			"D-Pad Left", "D-Pad Up",   "D-Pad Right", "D-Pad Down",
+			"Stick Left", "Stick Up",   "Stick Right", "Stick Down",
+			"R-Stick Left", "R-Stick Up", "R-Stick Right", "R-Stick Down",
+			"SL (Left)",  "SR (Left)",  "SL (Right)",  "SR (Right)"
+		};
+		const int switch_names_total = (int)(sizeof(switch_names) / sizeof(switch_names[0]));
+
+		if (keynum >= 1 && keynum < firstAxis + 1 && keynum <= switch_names_total)
+		{
+			return switch_names[keynum - 1];
+		}
+	}
+#endif
+
 	     if (keynum < firstAxis+1)            return JoystickButtonNames[keycode];
 	else if (keynum < firstHat+1)             return JoystickAxisNames[keycode-firstAxis];
 	else if (keynum < firstUnknown+1)         return JoystickHatNames[keycode-firstHat];
