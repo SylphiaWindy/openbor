@@ -306,21 +306,38 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
                     joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j) << 10;
                     continue;
                 }
-				if(!savedata.single_joycon_mode)
-				{
-					// digital directions same as analog ones if not single joycon mode
-					if(j >= 12 && j <= 15) {
-						joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j)  << (j + 4);
-					}
-				}
-                // skip "plus and minus" combo key (?!)
-                else if(j == 34)
+                // Buttons is a u32, so anything past bit 31 has nowhere to go
+                // and shifting there is undefined. This is what the old skip of
+                // the "plus and minus" combo key at 34 was really guarding.
+                else if(j >= 32)
                 {
                     continue;
                 }
 #endif
                 joysticks[i].Buttons |= SDL_JoystickGetButton(joystick[i], j) << j;
             }
+
+#ifdef __SWITCH__
+			/*
+			 * SDL reports the d-pad and the left stick's four directions as
+			 * separate buttons: 12-15 for the d-pad, 16-19 for the stick, in
+			 * the same left, up, right, down order. control_switch.h binds
+			 * movement to the stick, and OpenBOR binds one input per action,
+			 * so fold the d-pad onto the same four bits to let either one
+			 * drive movement.
+			 *
+			 * Older SDL merged the two itself, which is why the port did not
+			 * need this originally.
+			 *
+			 * Not in single joycon mode: a sideways joycon turns the d-pad a
+			 * quarter turn, and SDL has already turned the stick to match, so
+			 * folding one onto the other would cross them.
+			 */
+			if(!savedata.single_joycon_mode)
+			{
+				joysticks[i].Buttons |= ((joysticks[i].Buttons >> 12) & 0x0F) << 16;
+			}
+#endif
 
 			// check axes
 			for(j = 0; j < joysticks[i].NumAxes; j++)
