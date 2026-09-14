@@ -552,14 +552,15 @@ static void drawMenu()
 	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "J: View Logs");
 	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "S: Quit Game");
 #elif __SWITCH__
-	// Keyboard letters mean nothing on a pad. These follow the defaults in
-	// control_switch.h: attack is A, attack2 is B, jump is X, special is Y,
-	// and the menu starts on attack or start, opens the player on attack2,
-	// the logs on jump and quits on special.
-	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: Start Game");
-	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "B: BGM Player");
-	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "X: View Logs");
-	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "Y: Quit Game");
+	// Keyboard letters mean nothing on a pad, and this screen runs on player
+	// one's bindings, which the player can change in game. So ask what they
+	// are now rather than naming buttons that may no longer be right. The
+	// screen starts the game on attack, opens the player on attack2, shows the
+	// logs on jump and quits on special.
+	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "%s: Start Game", control_getkeyname(savedata.keys[0][SDID_ATTACK]));
+	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "%s: BGM Player", control_getkeyname(savedata.keys[0][SDID_ATTACK2]));
+	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "%s: View Logs", control_getkeyname(savedata.keys[0][SDID_JUMP]));
+	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "%s: Quit Game", control_getkeyname(savedata.keys[0][SDID_SPECIAL]));
 #else
 	//Kratus (13-03-21) changed the function "control_getkeyname" (Windows) to a direct string, because it will always use the default keys and can't be changed
 	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: Start Game");
@@ -624,11 +625,11 @@ static void drawBGMPlayer()
 	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "J: %s", bgmCycle ? "Cycle On" : "Cycle Off");
 	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "S: Exit Player");
 #elif __SWITCH__
-	// Same buttons the menu screen lists, for the same reasons.
-	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: %s", bgmPlay ? "Stop" : "Play");
-	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "B: %s", bgmLoop ? "Repeat On" : "Repeat Off");
-	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "X: %s", bgmCycle ? "Cycle On" : "Cycle Off");
-	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "Y: Exit Player");
+	// Same bindings the menu screen uses, read the same way.
+	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "%s: %s", control_getkeyname(savedata.keys[0][SDID_ATTACK]), bgmPlay ? "Stop" : "Play");
+	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "%s: %s", control_getkeyname(savedata.keys[0][SDID_ATTACK2]), bgmLoop ? "Repeat On" : "Repeat Off");
+	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "%s: %s", control_getkeyname(savedata.keys[0][SDID_JUMP]), bgmCycle ? "Cycle On" : "Cycle Off");
+	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "%s: Exit Player", control_getkeyname(savedata.keys[0][SDID_SPECIAL]));
 #else
 	//Kratus (13-03-21) changed the function "control_getkeyname" (Windows) to a direct string, because it will always use the default keys and can't be changed
 	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: %s", bgmPlay ? "Stop" : "Play");
@@ -681,9 +682,10 @@ static void drawLogs()
 #if OPENDINGUX
 	    printText(250, 3, RED, 0, 0, "Quit : Select");
 #elif __SWITCH__
-	    // This screen only listens for FLAG_ESC, which control_switch.h puts
-	    // on the left stick click. Saying "Escape" leaves no way out.
-	    printText((isWide ? 410 : 250), 3, RED, 0, 0, "Quit : L Stick");
+	    // This screen only listens for FLAG_ESC, which is bound to CONTROL_ESC
+	    // rather than through savedata.keys. Saying "Escape" named a key the
+	    // console does not have and left the screen looking like a dead end.
+	    printText((isWide ? 410 : 250), 3, RED, 0, 0, "Quit : %s", control_getkeyname(CONTROL_ESC));
 #else
 	    printText((isWide ? 410 : 250), 3, RED, 0, 0, "Quit : Escape");
 #endif
