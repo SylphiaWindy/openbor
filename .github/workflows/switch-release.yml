@@ -1,0 +1,89 @@
+# Builds the Switch NRO and publishes it, on tags only.
+#
+# The workflow file GitHub runs for a tag is the one stored at the tagged
+# commit, so this can be tested from a branch: tag a commit, watch the run,
+# then delete the tag and the release it made. Only workflow_dispatch would
+# need the file on the default branch, and there is no dispatch here.
+#
+# Works unchanged on either branch: the NRO is found by glob, so it does not
+# matter whether the project builds OpenBOR.nro or FFLNS.nro.
+name: Switch release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build NRO
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+
+    steps:
+      - name: Install portlibs
+        run: |
+          dkp-pacman -Sy --noconfirm
+          dkp-pacman -S --noconfirm --needed \
+            switch-pkg-config \
+            switch-sdl2 \
+            switch-sdl2_gfx \
+            switch-libpng \
+            switch-zlib \
+            switch-libogg \
+            switch-libvorbisidec \
+            switch-libvpx \
+            switch-mesa \
+            switch-glad
+
+      - uses: actions/checkout@v4
+        with:
+          # The version comes from the commit count, so the whole history has
+          # to be here. A shallow clone would report build 1.
+          fetch-depth: 0
+
+      - name: Let git read the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Build
+        run: |
+          cmake -S . -B build.switch \
+            -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/cmake/Switch.cmake" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build.switch -j"$(nproc)"
+
+      - name: Report what was built
+        run: |
+          ls -l build.switch/*.nro
+          strings build.switch/*.nro | grep -m1 '^OpenBoR v' || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switch-nro
+          path: build.switch/*.nro
+          if-no-files-found: error
+
+  release:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: switch-nro
+          path: dist
+
+      # gh is on the runner, so this step stays outside the build container.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/*.nro
