@@ -38539,7 +38539,15 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 						sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
 					}
 				}
-				else if ((player[i].newkeys & FLAG_ANYBUTTON) && example[i]) //Kratus (01-05-21) Moved the "anybutton" code to before of the "left/right" code to fix a bug that makes no character chosen when both are pressed together
+				// Kratus (01-05-21) Moved the "anybutton" code to before of the "left/right" code to fix a bug that makes no character chosen when both are pressed together
+				//
+				// Attack2 picks at random, and jump and special cycle colours
+				// where the mod offers that, so those keys cannot also confirm.
+				// Everything else still does, which is the point of the change
+				// above.
+				else if (example[i] &&
+						 (player[i].newkeys & (FLAG_ANYBUTTON & ~FLAG_ATTACK2 &
+											   ~(colourselect ? (FLAG_JUMP | FLAG_SPECIAL) : 0))))
 				{
 					if (SAMPLE_BEEP2 >= 0)
 					{
@@ -38615,6 +38623,26 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 						//  Apply color set.
 						ent_set_colourmap(example[i], player[i].colourmap);
 					}					
+				}
+				// oooh pretty colors! - selectable color scheme for player characters
+				else if ((player[i].newkeys & (FLAG_JUMP | FLAG_SPECIAL)) && colourselect && example[i])
+				{
+					player[i].colourmap = ((player[i].newkeys & FLAG_JUMP) ? nextcolourmapn : prevcolourmapn)(example[i]->model, player[i].colourmap, i);
+					ent_set_colourmap(example[i], player[i].colourmap);
+				}
+				// Surprise me.
+				else if ((player[i].newkeys & FLAG_ATTACK2) && example[i])
+				{
+					if (SAMPLE_BEEP >= 0)
+					{
+						sound_play_sample(SAMPLE_BEEP, 0, savedata.effectvol, savedata.effectvol, 100);
+					}
+
+					ent_set_model(example[i], selectrandomplayer(example[i]->model)->name, 0);
+					strcpy(player[i].name, example[i]->model->name);
+
+					player[i].colourmap = (colourselect) ? selectrandomcolourmap(example[i]->model, i) : 0;
+					ent_set_colourmap(example[i], player[i].colourmap);
 				}
 			}
 			else if (ready[i] == 1)
