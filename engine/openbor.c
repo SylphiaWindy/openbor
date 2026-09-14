@@ -38553,7 +38553,8 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 					example[i]->stalltime = _time + GAME_SPEED * 2;
 					ready[i] = 1;
 				}
-				else if (player[i].newkeys & (FLAG_MOVELEFT | FLAG_MOVERIGHT) && example[i])
+				else if (example[i] && (player[i].newkeys & (FLAG_MOVELEFT | FLAG_MOVERIGHT |
+															 FLAG_MOVEUP | FLAG_MOVEDOWN)))
 				{
 					// Give player a feedback sound.
 					if (SAMPLE_BEEP >= 0)
@@ -38564,15 +38565,25 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 					// Get model in use right now.
 					model_old = example[i]->model;
 
-					// Let's get the new model. Left key = previous model 
-					// in cycle. Right key = next.
+					// Left and right walk the roster in order, previous and
+					// next. Up and down walk within a selectcol, which is what
+					// gives a screen that draws the roster as a grid its
+					// vertical axis.
 					if ((player[i].newkeys & FLAG_MOVELEFT))
 					{
 						model_new = prevplayermodeln(model_old, i);
 					}
-					else
+					else if ((player[i].newkeys & FLAG_MOVERIGHT))
 					{
 						model_new = nextplayermodeln(model_old, i);
+					}
+					else if ((player[i].newkeys & FLAG_MOVEUP))
+					{
+						model_new = prevplayermodelcoln(model_old, i);
+					}
+					else
+					{
+						model_new = nextplayermodelcoln(model_old, i);
 					}
 
 					// Do we have a select out transition? If so play it here. 
@@ -38604,11 +38615,6 @@ int selectplayer(int *players, char *filename, int useSavedGame)
 						//  Apply color set.
 						ent_set_colourmap(example[i], player[i].colourmap);
 					}					
-				}
-				else if (player[i].newkeys & (FLAG_MOVEUP | FLAG_MOVEDOWN) && colourselect && example[i])
-				{
-					player[i].colourmap = ((player[i].newkeys & FLAG_MOVEUP) ? nextcolourmapn : prevcolourmapn)(example[i]->model, player[i].colourmap, i);
-					ent_set_colourmap(example[i], player[i].colourmap);
 				}
 			}
 			else if (ready[i] == 1)
