@@ -2,7 +2,39 @@ cmake_minimum_required(VERSION 3.1)
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
 project(FFLNS)
-set(OPENBOR_VERSION "3.0.7127-FFLNS")
+# Version hbmenu shows, and the name of the release archive.
+#
+# Derived from the repository rather than written out, because a literal goes
+# stale the moment anything is committed: the old one said 7127 while the tree
+# it names was 7144 and climbing. The build number is the commit count, the
+# same number engine/version.sh bakes into the engine's own version string, so
+# the two always agree.
+find_package(Git QUIET)
+if (GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE OPENBOR_BUILD
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=6 HEAD
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE OPENBOR_COMMIT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+endif ()
+# The NACP carries the display version in 16 bytes, so 15 characters is all
+# hbmenu will ever show; anything longer is silently cut. "FFLNS" does not
+# belong in it either, hbmenu prints the name on the line above.
+if (OPENBOR_BUILD AND OPENBOR_COMMIT)
+    set(OPENBOR_VERSION "3.0.${OPENBOR_BUILD}-${OPENBOR_COMMIT}")
+    string(LENGTH "${OPENBOR_VERSION}" OPENBOR_VERSION_LENGTH)
+    if (OPENBOR_VERSION_LENGTH GREATER 15)
+        string(SUBSTRING "${OPENBOR_VERSION}" 0 15 OPENBOR_VERSION)
+    endif ()
+else ()
+    set(OPENBOR_VERSION "3.0-FFLNS")
+endif ()
+message(STATUS "OpenBOR version: ${OPENBOR_VERSION}")
 
 #####################
 # OPTIONS
