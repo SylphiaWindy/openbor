@@ -2319,7 +2319,11 @@ void execute_pdie_script(int index)
 
 void clearbuttons(int player)
 {
+#ifdef __SWITCH__
+    savedata.joyrumble[player] = 1;
+#else
     savedata.joyrumble[player] = 0;
+#endif
 
     if (player == 0)
     {
@@ -2460,6 +2464,9 @@ void clearsettings()
     savedata.hwfilter = 1;
         #ifdef ANDROID
         savedata.hwscale = 0.0;
+        #elif __SWITCH__
+        savedata.hwscale = 2.0f;
+        savedata.single_joycon_mode = 1;
         #else
         savedata.hwscale = 1.0;
         #endif
@@ -36584,6 +36591,9 @@ void init_videomodes(int log)
 #elif VITA
     tryfile("data/videovita.txt");
     tryfile("data/video169.txt");
+#elif __SWITCH__
+    tryfile("data/videoswitch.txt");
+    tryfile("data/video169.txt");
 #endif
 #undef tryfile
 
@@ -37071,7 +37081,11 @@ void keyboard_setup(int player)
 void menu_options_input()
 {
     int quit = 0;
+    #if __SWITCH__
+    int selector = 0; // 0
+    #else
     int selector = 1; // 0
+    #endif
     int x_pos = -6;
     #if ANDROID
     int OPTIONS_NUM = 6;
@@ -37104,6 +37118,11 @@ void menu_options_input()
         {
             _menutext((selector == 0), -4, -2, Tr("Nunchuk Analog Disabled"));
         }
+        #elif __SWITCH__
+        if(savedata.single_joycon_mode)
+            _menutext((selector == 0), x_pos, -2, Tr("Single Joycon Mode Enabled"));
+        else
+            _menutext((selector == 0), x_pos, -2, Tr("Single Joycon Mode Disabled"));
         #else
         if(savedata.usejoy)
         {
@@ -37178,7 +37197,15 @@ void menu_options_input()
             switch(selector)
             {
             case 0:
+#ifdef __SWITCH__
+                savedata.single_joycon_mode ^= 1;
+                if(savedata.single_joycon_mode)
+                    SDL_SetHint("SDL_HINT_SINGLE_JOYCONS_MODE", "1");
+                else
+                    SDL_SetHint("SDL_HINT_SINGLE_JOYCONS_MODE", "0");
+#else
                 control_usejoy((savedata.usejoy ^= 1));
+#endif
                 break;
             case 1:
                 keyboard_setup(0);
@@ -38203,7 +38230,9 @@ void menu_options_video()
 
 #if SDL
 #if !defined(GP2X) && !defined(OPENDINGUX)
+#ifndef __SWITCH__
                 video_fullscreen_flip();
+#endif
                 break;
             case 4:
                 savedata.usegl = !savedata.usegl;

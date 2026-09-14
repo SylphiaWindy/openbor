@@ -4,3 +4,7 @@
 OpenBOR.elf
 meta.xml
 engine/releases/
+
+# switch port
+.idea
+cmake-build*
