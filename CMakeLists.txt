@@ -2,7 +2,38 @@ cmake_minimum_required(VERSION 3.1)
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
 project(OpenBOR)
-set(OPENBOR_VERSION "3.0.7141")
+# Version hbmenu shows, and the name of the release archive.
+#
+# Derived from the repository rather than written out: a literal names the
+# build it was typed at and goes stale on the next commit. The build number is
+# the commit count, the same one engine/version.sh bakes into the engine's own
+# version string, so the launcher and the engine always agree.
+#
+# The NACP carries the display version in 16 bytes, so 15 characters is all
+# hbmenu will ever show and anything longer is silently cut.
+find_package(Git QUIET)
+if (GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE OPENBOR_BUILD
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=6 HEAD
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE OPENBOR_COMMIT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+endif ()
+if (OPENBOR_BUILD AND OPENBOR_COMMIT)
+    set(OPENBOR_VERSION "3.0.${OPENBOR_BUILD}-${OPENBOR_COMMIT}")
+    string(LENGTH "${OPENBOR_VERSION}" OPENBOR_VERSION_LENGTH)
+    if (OPENBOR_VERSION_LENGTH GREATER 15)
+        string(SUBSTRING "${OPENBOR_VERSION}" 0 15 OPENBOR_VERSION)
+    endif ()
+else ()
+    set(OPENBOR_VERSION "3.0")
+endif ()
+message(STATUS "OpenBOR version: ${OPENBOR_VERSION}")
 
 #####################
 # OPTIONS
@@ -59,17 +90,19 @@ file(GLOB BOR_SRC
         engine/source/webmlib/nestegg/*.c
         )
 
-set(BOR_CFLAGS -g -Wall -fsigned-char -fomit-frame-pointer -DSDL -DSDL2 -DWEBM -DOPENGL -DLOADGL -D__CMAKE__)
+set(BOR_CFLAGS -g -Wall -fsigned-char -std=gnu99 -fomit-frame-pointer -DSDL -DSDL2 -DWEBM -DOPENGL -DLOADGL -D__CMAKE__)
 set(BOR_LDFLAGS ${SDL2_LIBRARIES} ${SDL2_GFX_LIBRARIES} ${VPX_LIBRARIES} ${PNG_LIBRARIES} ${ZLIB_LIBRARIES} m)
 
 ##############
 # VERSION.SH
 ##############
-ADD_CUSTOM_COMMAND(
-        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/engine/version.h
+# version.h lands in the source tree, so a plain OUTPUT dependency never
+# refires once the file exists and the build then reports a stale commit.
+# Regenerate it on every build instead.
+ADD_CUSTOM_TARGET(version_h ALL
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/engine
-        COMMAND bash version.sh)
-list(APPEND BOR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/engine/version.h)
+        COMMAND bash version.sh
+        BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/engine/version.h)
 
 #####################
 # OPTIONS
@@ -110,6 +143,7 @@ endif ()
 # OpenBOR executable
 #####################
 add_executable(${CMAKE_PROJECT_NAME} ${BOR_SRC})
+add_dependencies(${CMAKE_PROJECT_NAME} version_h)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${BOR_INC})
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE ${BOR_CFLAGS})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${BOR_LDFLAGS})
@@ -120,7 +154,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME} ${BOR_LDFLAGS})
 if (NINTENDO_SWITCH)
     nx_generate_nacp(${CMAKE_PROJECT_NAME}.nacp
             NAME "${CMAKE_PROJECT_NAME}"
-            AUTHOR "cpasjuste"
+            AUTHOR "cpasjuste, Sylphia"
             VERSION "${OPENBOR_VERSION}"
             )
     nx_create_nro(${CMAKE_PROJECT_NAME}
