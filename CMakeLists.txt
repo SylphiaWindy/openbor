@@ -13,6 +13,21 @@ project(OpenBOR)
 # hbmenu will ever show and anything longer is silently cut.
 find_package(Git QUIET)
 if (GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    # Re-run configure when the checkout moves, or the version below is read
+    # once and then repeated by every later build.
+    #
+    # HEAD alone is not enough: on a branch it holds "ref: refs/heads/name" and
+    # committing does not touch it, only the ref it names. Track both. A packed
+    # ref has no file to watch, and then only branch switches are noticed.
+    set(OPENBOR_GIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${OPENBOR_GIT_DIR}/HEAD")
+    file(READ "${OPENBOR_GIT_DIR}/HEAD" OPENBOR_GIT_HEAD)
+    string(STRIP "${OPENBOR_GIT_HEAD}" OPENBOR_GIT_HEAD)
+    if (OPENBOR_GIT_HEAD MATCHES "^ref: (.+)$" AND EXISTS "${OPENBOR_GIT_DIR}/${CMAKE_MATCH_1}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                "${OPENBOR_GIT_DIR}/${CMAKE_MATCH_1}")
+    endif ()
+
     execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             OUTPUT_VARIABLE OPENBOR_BUILD
