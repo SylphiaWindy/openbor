@@ -2661,7 +2661,11 @@ void clearsettings()
         savedata.hwscale = 0.0;
         #elif __SWITCH__
         savedata.hwscale = 2.0f;
-        savedata.single_joycon_mode = 1;
+        // Off by default. A single joycon held sideways is the exception, and
+        // with it on the d-pad does nothing: SDL reports the sideways pad's
+        // four buttons where a normal pad reports its face buttons, so
+        // control.c cannot fold them onto the stick's directions.
+        savedata.single_joycon_mode = 0;
         #else
         savedata.hwscale = 1.0;
         #endif
