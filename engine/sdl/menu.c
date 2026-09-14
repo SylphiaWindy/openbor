@@ -551,6 +551,15 @@ static void drawMenu()
 	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "A2: BGM Player");
 	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "J: View Logs");
 	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "S: Quit Game");
+#elif __SWITCH__
+	// Keyboard letters mean nothing on a pad. These follow the defaults in
+	// control_switch.h: attack is A, attack2 is B, jump is X, special is Y,
+	// and the menu starts on attack or start, opens the player on attack2,
+	// the logs on jump and quits on special.
+	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: Start Game");
+	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "B: BGM Player");
+	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "X: View Logs");
+	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "Y: Quit Game");
 #else
 	//Kratus (13-03-21) changed the function "control_getkeyname" (Windows) to a direct string, because it will always use the default keys and can't be changed
 	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: Start Game");
@@ -614,6 +623,12 @@ static void drawBGMPlayer()
 	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "A2: %s", bgmLoop ? "Repeat On" : "Repeat Off");
 	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "J: %s", bgmCycle ? "Cycle On" : "Cycle Off");
 	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "S: Exit Player");
+#elif __SWITCH__
+	// Same buttons the menu screen lists, for the same reasons.
+	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: %s", bgmPlay ? "Stop" : "Play");
+	printText((isWide ? 150 : 84),(isWide ? 251 : 226), WHITE, 0, 0, "B: %s", bgmLoop ? "Repeat On" : "Repeat Off");
+	printText((isWide ? 270 : 164),(isWide ? 251 : 226), WHITE, 0, 0, "X: %s", bgmCycle ? "Cycle On" : "Cycle Off");
+	printText((isWide ? 390 : 244),(isWide ? 251 : 226), WHITE, 0, 0, "Y: Exit Player");
 #else
 	//Kratus (13-03-21) changed the function "control_getkeyname" (Windows) to a direct string, because it will always use the default keys and can't be changed
 	printText((isWide ? 23 : 4),(isWide ? 251 : 226), WHITE, 0, 0, "A: %s", bgmPlay ? "Stop" : "Play");
@@ -665,6 +680,10 @@ static void drawLogs()
 	    sound_update_music();
 #if OPENDINGUX
 	    printText(250, 3, RED, 0, 0, "Quit : Select");
+#elif __SWITCH__
+	    // This screen only listens for FLAG_ESC, which control_switch.h puts
+	    // on the left stick click. Saying "Escape" leaves no way out.
+	    printText((isWide ? 410 : 250), 3, RED, 0, 0, "Quit : L Stick");
 #else
 	    printText((isWide ? 410 : 250), 3, RED, 0, 0, "Quit : Escape");
 #endif
