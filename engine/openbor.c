@@ -23220,7 +23220,7 @@ void display_ents()
                     {
                         // If this entity is not an exception to the rule,
                         // move its display order in front of owner.
-                        if (!(self->modeldata.aimove & AIMOVE1_STAR))
+                        if (!(e->modeldata.aimove & AIMOVE1_STAR))
                         {
                             sortid = e->owner->sortid + 1;
                         }
