@@ -1,4 +1,5 @@
-# PROFILING OVERRIDE -- loose file, shadows the pak's copy.
+# PROFILING OVERRIDE -- loose file, shadows the pak's copy (regenerated for
+# the 4.3 pak; the 4.0 one differed).
 # Only addition: an updatescript that calls finishlevel() after ~3 s, so an
 # unattended run crosses level boundaries instead of having to clear a stage.
 # Every spawn is untouched, so the models -- and the sprites they pull in --
@@ -45,6 +46,10 @@ at      0
 
 #direction		both
 
+spawn   wall_fase1
+coords  238 220
+at	0
+
 
 #-------1
 
@@ -57,6 +62,8 @@ at      0
 
 #----------------
 
+levelscript  data/scripts/drumlevel1.c
+
 spawn dmnd
 coords 0 0
 flip 1
@@ -67,7 +74,7 @@ coords  0 195
 flip 1
 at 0
 
-group   3 3
+group   4 4
 at      0
 
 wait
@@ -89,60 +96,74 @@ void main()
 coords	-40 220
 at	0
 
-spawn  drum
-	coords  65	200
-	at  0
-	
-	spawn  drum
-	coords  105	205
-	at  0
-	
-spawn  drum
-	coords  75	215
-	at  0
-	
-spawn  drum
-	coords  115	220
-	at  0
-	
-spawn  drum
+
+
+spawn   wventana
+flip 1
+coords  0 0
+at      0	
+
+spawn   wventana
+flip 1
+coords  64 0
+at      0	
+
+spawn   wventana
+flip 1
+coords  208 0
+at      0	
+
+spawn   wventana
+flip 1
+coords  384 0
+at      0	
+
+spawn   personajealt
+coords  70 195
+at      0
+
+spawn   personajealt
 2pspawn 1
-	coords  85	225
-	at  0
-	
-spawn  drum
+coords  100 195
+at      0
+
+spawn   personajealt
+3pspawn 1
+coords  130 195
+at      0
+
+spawn   personajealt
+4pspawn 1
+coords  160 195
+at      0
+
+spawn   personajealt2
+coords  85 205
+at      0
+
+spawn   personajealt2
 2pspawn 1
-	coords  125	230
-	at  0
-	
-spawn  drum
+coords  115 205
+at      0
+
+spawn   personajealt2
 3pspawn 1
-	coords  95	235
-	at  0
-	
-spawn  drum
-3pspawn 1
-	coords  135	240
-	at  0
-	
-spawn  drum
+coords  145 205
+at      0
+
+spawn   personajealt2
 4pspawn 1
-	coords  105	245
-	at  0
-	
-spawn  drum
-4pspawn 1
-	coords  145	250
-	at  0
+coords  175 205
+at      0
 
 spawn   trash
 item	  coina
-coords  331 204
+coords  231 204
 at      0
 
 spawn   trash
 item	  hammera
-coords  382 204
+coords  282 204
 at      0
 
 spawn   Bredl
@@ -161,6 +182,26 @@ at      0
 
 spawn   dug
 coords  -100 200
+at      0
+
+spawn	doorslum1
+flip    1
+coords	328 175
+at      0
+
+spawn	bred4
+alias Bred
+coords	352 175
+at      0
+
+spawn	dug4
+alias Dug
+coords	352 175
+at      0
+
+spawn	jake4
+alias Jake
+coords	352 175
 at      0
 
 spawn   simons
@@ -192,14 +233,14 @@ at      1
 
 
 spawn   tires
-2pitem	  mierda
-coords  513 230
-at      184
+item	  mierda
+coords  554 265
+at      1
 
 
 spawn   tires
-item	  mierda
-coords  574 203
+2pitem	  mierda
+coords  513 230
 at      184
 
 #-------1
@@ -217,7 +258,7 @@ void main()
     void self = getlocalvar("self");
     int Players = openborvariant("count_players");
    
-    if(Players >= 4){
+    if(Players >= 2){
       killentity(self);
     }
 }
@@ -227,7 +268,27 @@ at	312
 
 
 spawn   axl
-coords  -100 200
+coords  -100 225
+at      312
+
+spawn	doorslum1
+flip    1
+coords	320 175
+at      312
+
+spawn	bred4
+alias Bred
+coords	344 175
+at      312
+
+spawn	dug4
+alias Dug
+coords	344 175
+at      312
+
+spawn	jake4
+alias Jake
+coords	344 175
 at      312
 
 spawn   slash
@@ -246,16 +307,18 @@ alias Holly_Wood
 coords  -100 200
 at      312
 
-spawn   holly
+spawn   holly_2
 alias Holly_Wood
 4pspawn	1
 coords  50 200 200
 at      312
 
-spawn   bull
+spawn   bull_3
+alias Bull
 4pspawn	1
-coords  400 230 200
+coords  400 230 300
 at      312
+
 
 spawn	KillDummy
 alias	dummy
