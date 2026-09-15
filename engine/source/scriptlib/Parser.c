@@ -153,7 +153,7 @@ void Parser_ParseExpression(Parser *pparser, List *pIList, LPSTR scriptText,
 void Parser_AddInstructionViaToken(Parser *pparser, OpCode pCode, Token *pToken, Label label )
 {
     Instruction *pInstruction = NULL;
-    pInstruction = (Instruction *)malloc(sizeof(Instruction));
+    pInstruction = Instruction_Alloc();
     Instruction_InitViaToken(pInstruction, pCode, pToken);
     List_InsertAfter(pparser->pIList, pInstruction, label);
 }
@@ -169,7 +169,7 @@ void Parser_AddInstructionViaToken(Parser *pparser, OpCode pCode, Token *pToken,
 void Parser_AddInstructionViaLabel(Parser *pparser, OpCode pCode, Label instrLabel, Label listLabel )
 {
     Instruction *pInstruction = NULL;
-    pInstruction = (Instruction *)malloc(sizeof(Instruction));
+    pInstruction = Instruction_Alloc();
     Instruction_InitViaLabel(pInstruction, pCode, instrLabel);
     List_InsertAfter(pparser->pIList, pInstruction, listLabel);
 }
@@ -568,7 +568,7 @@ void Parser_Param_list2(Parser *pparser )
         }
 
         sprintf( buf, "%d", pparser->paramCount );
-        pinstruction = (Instruction *)malloc(sizeof(Instruction));
+        pinstruction = Instruction_Alloc();
         Instruction_InitViaLabel(pinstruction, CHECKARG, buf);
 
         List_InsertBefore(pparser->pIList, pinstruction, NULL );

@@ -49,6 +49,10 @@ void Instruction_InitViaToken(Instruction *pins, OpCode code, Token *pToken );
 void Instruction_InitViaLabel(Instruction *pins, OpCode code, LPCSTR label );
 void Instruction_Init(Instruction *pins);
 void Instruction_Clear(Instruction *pins);
+Instruction *Instruction_Alloc(void);
+void Instruction_Recycle(Instruction *pins);
+void Instruction_DrainPool(void);
+void Instruction_PoolStats(void);
 
 void Instruction_NewData(Instruction *pins);
 void Instruction_ConvertConstant(Instruction *pins);

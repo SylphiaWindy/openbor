@@ -183,6 +183,13 @@ struct sprite_list
     s_sprite *sprite;
     int ref;
     struct sprite_list *next;
+
+    /* Deferred-free cache: what this sprite's encoded data costs, and its
+       place in the LRU of sprites kept past the unload that would have
+       freed them.  cached is 0 when the sprite is in use. */
+    unsigned long bytes;
+    int cached;
+    struct sprite_list *lru_prev, *lru_next;
 };
 typedef struct sprite_list s_sprite_list;
 
