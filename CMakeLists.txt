@@ -17,13 +17,31 @@ if (GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
     # HEAD alone is not enough: on a branch it holds "ref: refs/heads/name" and
     # committing does not touch it, only the ref it names. Track both. A packed
     # ref has no file to watch, and then only branch switches are noticed.
-    set(OPENBOR_GIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.git")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${OPENBOR_GIT_DIR}/HEAD")
-    file(READ "${OPENBOR_GIT_DIR}/HEAD" OPENBOR_GIT_HEAD)
-    string(STRIP "${OPENBOR_GIT_HEAD}" OPENBOR_GIT_HEAD)
-    if (OPENBOR_GIT_HEAD MATCHES "^ref: (.+)$" AND EXISTS "${OPENBOR_GIT_DIR}/${CMAKE_MATCH_1}")
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                "${OPENBOR_GIT_DIR}/${CMAKE_MATCH_1}")
+    #
+    # In a linked worktree .git is a file pointing at the real directory, and
+    # the per-worktree HEAD sits apart from the shared refs, so ask git for
+    # both paths rather than assuming either.
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --absolute-git-dir
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE OPENBOR_GIT_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --path-format=absolute --git-common-dir
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE OPENBOR_GIT_COMMON_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    if (NOT OPENBOR_GIT_COMMON_DIR)
+        set(OPENBOR_GIT_COMMON_DIR "${OPENBOR_GIT_DIR}")
+    endif ()
+    if (EXISTS "${OPENBOR_GIT_DIR}/HEAD")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${OPENBOR_GIT_DIR}/HEAD")
+        file(READ "${OPENBOR_GIT_DIR}/HEAD" OPENBOR_GIT_HEAD)
+        string(STRIP "${OPENBOR_GIT_HEAD}" OPENBOR_GIT_HEAD)
+        if (OPENBOR_GIT_HEAD MATCHES "^ref: (.+)$" AND EXISTS "${OPENBOR_GIT_COMMON_DIR}/${CMAKE_MATCH_1}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                    "${OPENBOR_GIT_COMMON_DIR}/${CMAKE_MATCH_1}")
+        endif ()
     endif ()
 
     execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
