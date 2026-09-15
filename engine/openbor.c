@@ -29,6 +29,56 @@ PROF_ACC(prof_ls_palette);          // loadimagepalette for a model's first fram
 PROF_ACC(prof_frame_peek);          // the look-ahead that counts an anim's frames
 #ifdef BOR_PROF
 /*
+ * When each sprite is first actually drawn.
+ *
+ * Decoding is 430 ms of a level load, and the obvious move is to decode
+ * lazily -- but that only helps if a fair share of what gets decoded is never
+ * drawn.  If instead everything is drawn in the first second, lazy decoding
+ * just moves the stall from the black screen into gameplay, which is worse.
+ * There is no way to know in advance, so measure after the fact: record the
+ * first draw of every sprite index and see how the times fall.
+ */
+static uint64_t *prof_sprite_first;     /* us since level start, 0 = never */
+static int       prof_sprite_first_cap;
+static uint64_t  prof_level_t0;
+
+void prof_sprite_used(int index)
+{
+    if(index < 0 || index >= prof_sprite_first_cap || !prof_sprite_first) return;
+    if(prof_sprite_first[index]) return;
+    prof_sprite_first[index] = prof_us() - prof_level_t0 + 1;
+}
+
+void prof_sprite_track_reset(int count)
+{
+    free(prof_sprite_first);
+    prof_sprite_first = calloc(count > 0 ? count : 1, sizeof(*prof_sprite_first));
+    prof_sprite_first_cap = prof_sprite_first ? count : 0;
+    prof_level_t0 = prof_us();
+}
+
+void prof_sprite_track_report(int loaded)
+{
+    static const uint64_t edge[] = { 1000000ULL, 5000000ULL, 15000000ULL, 0 };
+    static const char *label[] = { "drawn within 1 s", "within 5 s", "within 15 s", "later" };
+    int i, b, bucket[4] = {0,0,0,0}, drawn = 0;
+
+    if(!prof_sprite_first) return;
+    for(i = 0; i < prof_sprite_first_cap && i < loaded; i++)
+    {
+        if(!prof_sprite_first[i]) continue;
+        drawn++;
+        for(b = 0; b < 3 && prof_sprite_first[i] - 1 >= edge[b]; b++) ;
+        bucket[b]++;
+    }
+    prof_log("    sprites drawn: %d of %d loaded (%.1f%% never drawn)",
+             drawn, loaded, loaded ? 100.0 * (loaded - drawn) / loaded : 0.0);
+    for(b = 0; b < 4; b++)
+        if(bucket[b]) prof_log("      %-18s %6d", label[b], bucket[b]);
+}
+#endif
+#ifdef BOR_PROF
+/*
  * Where the model-txt parse loop spends its time, per command.
  *
  * load_cached_model is ~90% of a level load, and neither the script compiler
@@ -23532,6 +23582,9 @@ void display_ents()
 
                 // If special is being executed, display all entities regardless
                 f = e->animation->sprite[e->animpos];
+#ifdef BOR_PROF
+                prof_sprite_used(f);
+#endif
 
                 //other = check_platform(e->position.x, e->position.z, e);
                 other = check_platform_below(e->position.x, e->position.z, e->position.y+eheight, e);
@@ -38448,6 +38501,9 @@ int playlevel(char *filename)
 
     prof_log("  playlevel: spawn+scripts %.3f ms", PROF_SINCE(_p_st));
     prof_log("playlevel(%s): black screen total %.3f ms", filename, PROF_SINCE(_p_pl));
+#ifdef BOR_PROF
+    prof_sprite_track_reset(sprites_loaded);
+#endif
     prof_flush("level started");
     _p_st = prof_us();
 
@@ -38529,6 +38585,9 @@ int playlevel(char *filename)
     prof_log("playlevel(%s): gameplay %.3f ms", filename, PROF_SINCE(_p_st));
     unload_level();
     prof_acc_report(&prof_cache_model_sprites, 1);
+#ifdef BOR_PROF
+    prof_sprite_track_report(sprites_loaded);
+#endif
     prof_flush("level ended");
 
     // Are any players alive?

@@ -14,9 +14,12 @@
 # killing the process.  pausemenu() is a two-entry toggle: START opens it,
 # UP/DOWN flips Continue -> End Game, START confirms.
 
-mash ATTACK 20000     # logo, intro, title, Choose Mode, difficulty
+mash ATTACK 45000     # logo, intro, title, Choose Mode, difficulty
+                      # (generous: headless runs pace differently from windowed
+                      #  ones -- the same sequence that reached the level at 19 s
+                      #  with a window took 47 s under SDL_VIDEODRIVER=dummy)
 
-wait 25000            # level load + a little play
+wait 30000            # level load + a little play
 
 tap START             # open pause menu
 wait 900
