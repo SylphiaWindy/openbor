@@ -4475,6 +4475,56 @@ void resourceCleanUp()
 }
 
 /*
+ * Index from filename to the sprite_map entries that use it.
+ *
+ * loadsprite() looked for a filename by walking every entry loaded so far.
+ * On the Switch, loading one level ran 16 million stricmp calls -- 1238 per
+ * lookup, against 402 on a desktop with the same data, because the map keeps
+ * growing as a session goes on.  It reads as a minor cost on a desktop and is
+ * about two seconds on the device.
+ *
+ * Bucket by a case-insensitive hash of the filename (stricmp still decides a
+ * match, so the hash only has to agree with it on equality) and chain entries
+ * that share a name through an array parallel to sprite_map, which leaves the
+ * map's own layout alone.
+ */
+#define SPR_NAME_BUCKETS 4096
+
+static int *spr_name_next;              /* parallel to sprite_map */
+static int  spr_name_bucket[SPR_NAME_BUCKETS];
+static int  spr_name_ready;
+
+static unsigned spr_name_hash(const char *s)
+{
+    unsigned h = 2166136261u;
+    for(; *s; s++)
+    {
+        unsigned char c = (unsigned char)*s;
+        if(c >= 'A' && c <= 'Z') c += 32;
+        if(c == '\\') c = '/';         /* the pak mixes separators */
+        h = (h ^ c) * 16777619u;
+    }
+    return h & (SPR_NAME_BUCKETS - 1);
+}
+
+static void spr_name_reset(void)
+{
+    int i;
+    for(i = 0; i < SPR_NAME_BUCKETS; i++) spr_name_bucket[i] = -1;
+    spr_name_ready = 1;
+}
+
+static void spr_name_add(int index)
+{
+    unsigned h;
+    if(!spr_name_ready) spr_name_reset();
+    if(!spr_name_next) return;
+    h = spr_name_hash(sprite_map[index].node->filename);
+    spr_name_next[index] = spr_name_bucket[h];
+    spr_name_bucket[h] = index;
+}
+
+/*
  * Sprite cache.
  *
  * Unloading a level frees every sprite its models used, so the next level
@@ -4581,6 +4631,7 @@ void freesprites()
 {
     spr_lru_head = spr_lru_tail = NULL;
     spr_lru_bytes = 0;
+    spr_name_reset();
 
     unsigned i;
     s_sprite_list *head;
@@ -4602,6 +4653,11 @@ void freesprites()
         free(sprite_map);
         sprite_map = NULL;
     }
+    if(spr_name_next != NULL)
+    {
+        free(spr_name_next);
+        spr_name_next = NULL;
+    }
     sprites_loaded = 0;
 }
 
@@ -4618,6 +4674,11 @@ void prepare_sprite_map(size_t size)
         if(sprite_map == NULL)
         {
             borShutdown(1, "Out Of Memory!  Failed to create a new sprite_map\n");
+        }
+        spr_name_next = realloc(spr_name_next, sizeof(*spr_name_next) * sprite_map_max_items);
+        if(spr_name_next == NULL)
+        {
+            borShutdown(1, "Out Of Memory!  Failed to grow the sprite name index\n");
         }
     }
 }
@@ -4732,15 +4793,17 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
     int clipl, clipr, clipt, clipb;
     s_sprite_list *curr = NULL, *head = NULL, *toshare = NULL;
 
-    /* calls = how many times we swept; bytes = entries compared, i.e. the
-       quadratic term made visible. */
+    /* calls = lookups; bytes = entries actually compared.  Before the index
+       the second number was sprites_loaded per lookup. */
     prof_loadsprite_scan.calls++;
-    prof_loadsprite_scan.bytes += (uint64_t)sprites_loaded;
-    for(i = 0; i < sprites_loaded; i++)
+    if(!spr_name_ready) spr_name_reset();
+    for(i = sprite_map ? spr_name_bucket[spr_name_hash(filename)] : -1;
+        i >= 0 && i < sprites_loaded;
+        i = spr_name_next[i])
     {
-        if(sprite_map && sprite_map[i].node)
+        prof_loadsprite_scan.bytes++;
         {
-            if(stricmp(sprite_map[i].node->filename, filename) == 0)
+            if(sprite_map[i].node && stricmp(sprite_map[i].node->filename, filename) == 0)
             {
                 if(sprite_map[i].node->cached)
                 {
@@ -4774,6 +4837,7 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
         sprite_map[sprites_loaded].node = toshare;
         sprite_map[sprites_loaded].centerx = ofsx - toshare->sprite->offsetx;
         sprite_map[sprites_loaded].centery = ofsy - toshare->sprite->offsety;
+        spr_name_add(sprites_loaded);
         ++sprites_loaded;
         return sprites_loaded - 1;
     }
@@ -4851,6 +4915,7 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
     sprite_map[sprites_loaded].node = sprite_list;
     sprite_map[sprites_loaded].centerx = ofsx - clipl;
     sprite_map[sprites_loaded].centery = ofsy - clipt;
+    spr_name_add(sprites_loaded);
     sprite_list->sprite->offsetx = clipl;
     sprite_list->sprite->offsety = clipt;
     sprite_list->sprite->srcwidth = bitmap->clipped_width;
