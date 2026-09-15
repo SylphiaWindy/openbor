@@ -1,0 +1,122 @@
+# PROFILING OVERRIDE -- loose file, shadows the copy inside the pak.
+# openPackfile() tries the filesystem before the pak, so this one file
+# overrides selarcade without repacking 1.9 GB.
+#
+# Only change: the goaruh sign moves from z=160 to z=225, onto the
+# player's own row, so a scripted ATTACK selects a difficulty with no
+# walking.  Moving the player instead does not work: the engine clamps
+# spawn z to the walkable area (asking for 160 lands you at 225), which
+# is also why holding 'up' never moved the player -- it starts on the
+# boundary already.  The signs' own scripts are untouched.
+# Delete this file to get the stock screen back.
+
+
+shadowcolor    75_75_75
+at             0
+
+shadowopacity  120
+at 0
+
+shadowalpha     2
+at              0
+
+music			data/music/select.ogg
+#bossmusic		data/music/BOSS01.BOR
+panel   		data/bgs/selarcade/n01.gif
+background 		data/bgs/selarcade/back.gif
+#frontpanel		data/bgs/SELarcade/f01.gif 
+#blocked 1
+order	a b c
+loadingbg DATA/BGS/SELarcade/LOADING.GIF 1 1770 228 126 2000 2000 0
+
+
+type			0
+settime		0
+notime		1
+#noslow		1
+stagenumber		104
+
+direction	both
+cameratype		0
+
+
+
+
+spawn1  236 180 200
+spawn2  266 180 200
+spawn3  296 180 200
+spawn4  326 180 200
+
+
+
+#direction		both
+
+
+#-------1
+
+#----------------
+
+spawn	goarmma
+coords  265 83
+flip    1
+at      0
+
+
+
+spawn	goar
+coords  50 160
+flip    1
+at      0
+
+
+spawn	goarh
+coords  145 160
+flip    1
+at      0
+
+
+spawn	goaruh
+coords  240 225
+flip    1
+at      0
+
+spawn	goarujh
+coords  335 160
+flip    1
+at      0
+
+spawn	goarmm
+coords  430 160
+flip    1
+at      0
+
+spawn	info1
+coords  50 160
+flip    1
+at      0
+
+
+spawn	info2
+coords  145 160
+flip    1
+at      0
+
+
+spawn	info3
+coords  240 160
+flip    1
+at      0
+
+spawn	info4
+coords  335 160
+flip    1
+at      0
+
+spawn	info5
+coords  430 160
+flip    1
+at      0
+
+
+
+#----------------
