@@ -1,0 +1,264 @@
+# PROFILING OVERRIDE -- loose file, shadows the pak's copy.
+# Only addition: an updatescript that calls finishlevel() after ~3 s, so an
+# unattended run crosses level boundaries instead of having to clear a stage.
+# Every spawn is untouched, so the models -- and the sprites they pull in --
+# are exactly what a real playthrough loads.
+# Delete this file to get the stock level back.
+
+updatescript data/scripts/prof_skip.c
+
+
+
+shadowcolor    75_75_75
+at             0
+
+shadowopacity  120
+at 0
+
+shadowalpha     2
+at              0
+
+music			data/music/Fase1.ogg
+#bossmusic		data/music/BOSS01.BOR
+panel   		data/bgs/ST01_1/n01_nuevo.gif
+background 		data/bgs/ST01_1/back_nuevo.gif
+frontpanel		data/bgs/ST01_1/f01.gif 
+#blocked 1
+order	a b c
+loadingbg DATA/BGS/ST01_1/LOADING.GIF 1 1770 228 126 2000 2000 0
+
+type			0
+settime		100
+notime		0
+#noslow		1
+stagenumber		102
+
+spawn1  40 20 200
+spawn2  50 30 200
+spawn3  60 40 200
+spawn4  70 50 200
+
+spawn   ddoor
+flip	1
+coords	1158 -4
+at      0
+
+#direction		both
+
+
+#-------1
+
+#----------------
+
+#spawn	stage01
+#coords  0 0
+#flip    1
+#at      0
+
+#----------------
+
+spawn dmnd
+coords 0 0
+flip 1
+at 0
+
+spawn wlad1uh
+coords  0 195
+flip 1
+at 0
+
+group   3 3
+at      0
+
+wait
+at      0
+
+
+spawn	dummy
+@script
+void main()
+{
+    void self = getlocalvar("self");
+    int Players = openborvariant("count_players");
+   
+    if(Players >= 3){
+      killentity(self);
+    }
+}
+@end_script
+coords	-40 220
+at	0
+
+spawn  drum
+	coords  65	200
+	at  0
+	
+	spawn  drum
+	coords  105	205
+	at  0
+	
+spawn  drum
+	coords  75	215
+	at  0
+	
+spawn  drum
+	coords  115	220
+	at  0
+	
+spawn  drum
+2pspawn 1
+	coords  85	225
+	at  0
+	
+spawn  drum
+2pspawn 1
+	coords  125	230
+	at  0
+	
+spawn  drum
+3pspawn 1
+	coords  95	235
+	at  0
+	
+spawn  drum
+3pspawn 1
+	coords  135	240
+	at  0
+	
+spawn  drum
+4pspawn 1
+	coords  105	245
+	at  0
+	
+spawn  drum
+4pspawn 1
+	coords  145	250
+	at  0
+
+spawn   trash
+item	  coina
+coords  331 204
+at      0
+
+spawn   trash
+item	  hammera
+coords  382 204
+at      0
+
+spawn   Bredl
+alias   Bred
+coords  510 200
+at      0
+
+spawn   jay
+alias J
+coords  510 200
+at      0
+
+spawn   jake
+coords  550 230
+at      0
+
+spawn   dug
+coords  -100 200
+at      0
+
+spawn   simons
+2pspawn   1
+coords  -100 230
+at      0
+
+spawn   two_p
+3pspawn   1
+coords  -120 200
+at      0
+
+spawn	KillDummy
+alias	dummy
+coords	-40 220
+at	0
+
+#-------1
+
+spawn   jay_2
+alias J
+coords  595 195
+at      1
+
+spawn   jake_2
+alias   Jake
+coords  698 195
+at      1
+
+
+spawn   tires
+2pitem	  mierda
+coords  513 230
+at      184
+
+
+spawn   tires
+item	  mierda
+coords  574 203
+at      184
+
+#-------1
+
+group   4 4
+at      312
+
+wait
+at      312
+
+spawn	dummy
+@script
+void main()
+{
+    void self = getlocalvar("self");
+    int Players = openborvariant("count_players");
+   
+    if(Players >= 4){
+      killentity(self);
+    }
+}
+@end_script
+coords	-40 220
+at	312
+
+
+spawn   axl
+coords  -100 200
+at      312
+
+spawn   slash
+2pspawn	1
+coords  -100 200
+at      312
+
+spawn   slash
+2pspawn	1
+coords  550 230
+at      312
+
+spawn   holly
+alias Holly_Wood
+3pspawn	1
+coords  -100 200
+at      312
+
+spawn   holly
+alias Holly_Wood
+4pspawn	1
+coords  50 200 200
+at      312
+
+spawn   bull
+4pspawn	1
+coords  400 230 200
+at      312
+
+spawn	KillDummy
+alias	dummy
+coords	-40 220
+at	312
+#-------1

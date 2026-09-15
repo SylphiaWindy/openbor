@@ -152,6 +152,7 @@ int main(int argc, char *argv[])
 	prof_log("main: initSDL done, %.3f ms", PROF_SINCE(_p_boot));
 #ifdef BOR_PROF
 	autoplay_init();
+	sprite_cache_init();
 #endif
 
 	packfile_mode(0);

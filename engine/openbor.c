@@ -25,6 +25,8 @@ PROF_ACC(prof_mc_nextline);         // advancing to the next line
 PROF_ACC(prof_loadsprite_scan);     // the linear sweep inside loadsprite()
 PROF_ACC(prof_ls_decode);           // loadbitmap: pull the gif and decode it
 PROF_ACC(prof_ls_redecode);         // ...of a file this session already decoded
+static void spr_lru_unlink(s_sprite_list *n);   /* sprite cache, below */
+extern prof_acc prof_spr_cache_hit;
 PROF_ACC(prof_ls_encode);           // clip + encode into the sprite format
 PROF_ACC(prof_ls_palette);          // loadimagepalette for a model's first frame
 PROF_ACC(prof_frame_peek);          // the look-ahead that counts an anim's frames
@@ -4472,8 +4474,111 @@ void resourceCleanUp()
     load_models();
 }
 
+/*
+ * Sprite cache.
+ *
+ * Unloading a level frees every sprite its models used, so the next level
+ * decodes from scratch -- and consecutive levels of one theme share 67-76% of
+ * their sprites, with only a select screen in between.  Decoding is ~450 ms of
+ * a level load, most of it re-doing work that was just thrown away.
+ *
+ * Rather than decode lazily -- which would move the stall into gameplay -- keep
+ * sprites past the unload that would have freed them, under a byte budget, and
+ * drop the least recently used when it is exceeded.  A level's sprites encode
+ * to about 2 MB, and simulating the first 40 levels says 8 MB covers 84% of the
+ * decoding and 16 MB is already saturated.
+ *
+ * Nothing about object lifetime changes: this only delays a free that already
+ * happens, and the reload path it defers to is the one the engine has always
+ * used.  The one hazard is that CMD_MODEL_FRAME can point a sprite's palette at
+ * its model and its mask at another sprite; both are detached on the way in, so
+ * a cached sprite is always self-contained.
+ */
+#define SPRITE_CACHE_DEFAULT_MB 16
+
+static unsigned long sprite_cache_budget = SPRITE_CACHE_DEFAULT_MB * 1024UL * 1024UL;
+
+/* $BOR_SPRITE_CACHE_MB overrides the budget, 0 disabling the cache entirely,
+   so a build can be measured against itself without being rebuilt. */
+void sprite_cache_init(void)
+{
+    const char *mb = getenv("BOR_SPRITE_CACHE_MB");
+    if(mb && mb[0])
+    {
+        sprite_cache_budget = (unsigned long)atoi(mb) * 1024UL * 1024UL;
+    }
+    prof_log("sprite cache: budget %lu MB", sprite_cache_budget / (1024UL * 1024UL));
+}
+
+static s_sprite_list *spr_lru_head, *spr_lru_tail;
+static unsigned long spr_lru_bytes;
+prof_acc prof_spr_cache_hit = { "prof_spr_cache_hit", 0, 0, 0 };
+PROF_ACC(prof_spr_cache_evict);
+
+static void spr_lru_unlink(s_sprite_list *n)
+{
+    if(!n->cached) return;
+    if(n->lru_prev) n->lru_prev->lru_next = n->lru_next;
+    else            spr_lru_head = n->lru_next;
+    if(n->lru_next) n->lru_next->lru_prev = n->lru_prev;
+    else            spr_lru_tail = n->lru_prev;
+    n->lru_prev = n->lru_next = NULL;
+    n->cached = 0;
+    spr_lru_bytes -= n->bytes;
+}
+
+static void spr_lru_trim(void)
+{
+    while(spr_lru_bytes > sprite_cache_budget && spr_lru_tail)
+    {
+        s_sprite_list *victim = spr_lru_tail;
+        spr_lru_unlink(victim);
+        prof_spr_cache_evict.calls++;
+        prof_spr_cache_evict.bytes += victim->bytes;
+        free(victim->sprite);
+        victim->sprite = NULL;
+    }
+}
+
+/* Take the sprite out of use but keep it decoded. */
+static void spr_cache_put(s_sprite_list *n)
+{
+    s_sprite *sp = n->sprite;
+    unsigned char *base = (unsigned char *)sp;
+
+    /* Detach anything owned elsewhere, so the cached sprite cannot outlive
+       what it points at.  encodesprite() leaves palette either NULL or inside
+       the sprite's own allocation; anything else came from a model. */
+    sp->mask = NULL;
+    if(sp->palette && !(sp->palette >= base && sp->palette < base + (size_t)n->bytes))
+    {
+        sp->palette = NULL;
+    }
+
+    n->cached = 1;
+    n->lru_prev = NULL;
+    n->lru_next = spr_lru_head;
+    if(spr_lru_head) spr_lru_head->lru_prev = n;
+    spr_lru_head = n;
+    if(!spr_lru_tail) spr_lru_tail = n;
+    spr_lru_bytes += n->bytes;
+    spr_lru_trim();
+}
+
+void sprite_cache_report(void)
+{
+    prof_log("    sprite cache: %.2f MB held, %llu hit (%llu KB saved), %llu evicted",
+             (double)spr_lru_bytes / (1024.0 * 1024.0),
+             (unsigned long long)prof_spr_cache_hit.calls,
+             (unsigned long long)(prof_spr_cache_hit.bytes / 1024),
+             (unsigned long long)prof_spr_cache_evict.calls);
+}
+
 void freesprites()
 {
+    spr_lru_head = spr_lru_tail = NULL;
+    spr_lru_bytes = 0;
+
     unsigned i;
     s_sprite_list *head;
     for(i = 0; i <= sprites_loaded; i++)
@@ -4569,7 +4674,14 @@ void cachesprite(int index, int load)
                     // a sprite with our target index.
                     sprite = map_node->sprite;
 
-                    if(!sprite)
+                    if(sprite && map_node->cached)
+                    {
+                        /* Still decoded from a previous level. */
+                        spr_lru_unlink(map_node);
+                        prof_spr_cache_hit.calls++;
+                        prof_spr_cache_hit.bytes += map_node->bytes;
+                    }
+                    else if(!sprite)
                     {
                         // Load the sprite file, then assign its
                         // new pointer to the sprite map using our
@@ -4583,14 +4695,18 @@ void cachesprite(int index, int load)
                     // Does the target sprite exist?
                     sprite = map_node->sprite;
 
-                    if(sprite)
+                    if(sprite && !map_node->cached)
                     {
-                        // Free the target sprite's resources, then remove
-                        // its pointer from sprite map.
-                        free(sprite);
-                        map_node->sprite = NULL;
-
-                        //printf("uncached sprite: %s\n", map_node->filename);
+                        if(map_node->bytes && map_node->bytes <= sprite_cache_budget)
+                        {
+                            /* Hold it instead; the next level probably wants it. */
+                            spr_cache_put(map_node);
+                        }
+                        else
+                        {
+                            free(sprite);
+                            map_node->sprite = NULL;
+                        }
                     }
                 }
             }
@@ -4623,6 +4739,15 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
         {
             if(stricmp(sprite_map[i].node->filename, filename) == 0)
             {
+                if(sprite_map[i].node->cached)
+                {
+                    /* Held from an earlier level: take it back into use.  This
+                       is the path a re-used sprite actually arrives by, and it
+                       must leave the LRU or it could be evicted while in use. */
+                    spr_lru_unlink(sprite_map[i].node);
+                    prof_spr_cache_hit.calls++;
+                    prof_spr_cache_hit.bytes += sprite_map[i].node->bytes;
+                }
                 if(!sprite_map[i].node->sprite)
                 {
                     sprite_map[i].node->sprite = loadsprite2(filename, NULL, NULL);
@@ -4703,6 +4828,9 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
     }
     memcpy(curr->filename, filename, len);
     curr->filename[len] = 0;
+    curr->bytes = size;
+    curr->cached = 0;
+    curr->lru_prev = curr->lru_next = NULL;
     encodesprite(ofsx - clipl, ofsy - clipt, bitmap, curr->sprite);
     prof_acc_add(&prof_ls_encode, _p_enc, 0);
     if(sprite_list == NULL)
@@ -13573,6 +13701,7 @@ int load_models()
     prof_acc_report(&prof_loadsprite_scan, 1);
     prof_acc_report(&prof_ls_decode, 1);
     prof_acc_report(&prof_ls_redecode, 1);
+    sprite_cache_report();
     prof_acc_report(&prof_ls_encode, 1);
     prof_acc_report(&prof_ls_palette, 1);
     prof_acc_report(&prof_frame_peek, 1);
@@ -16927,6 +17056,7 @@ lCleanup:
     prof_acc_report(&prof_loadsprite_scan, 1);
     prof_acc_report(&prof_ls_decode, 1);
     prof_acc_report(&prof_ls_redecode, 1);
+    sprite_cache_report();
     prof_acc_report(&prof_ls_encode, 1);
     prof_acc_report(&prof_ls_palette, 1);
     prof_acc_report(&prof_frame_peek, 1);

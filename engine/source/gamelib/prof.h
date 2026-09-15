@@ -88,6 +88,7 @@ extern prof_acc prof_ins_pool;        /* calls = high water, bytes = its size */
 /* How much parsed script text repeats; defined in openborscript.c. */
 void prof_script_text_report(void);
 void prof_script_alloc_report(void);
+void sprite_cache_init(void);        /* openbor.c */
 
 extern double      prof_phase[PROF_PH_COUNT];
 extern const char *prof_phase_name[PROF_PH_COUNT];

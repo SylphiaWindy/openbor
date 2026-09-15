@@ -19,7 +19,11 @@ mash ATTACK 45000     # logo, intro, title, Choose Mode, difficulty
                       #  ones -- the same sequence that reached the level at 19 s
                       #  with a window took 47 s under SDL_VIDEODRIVER=dummy)
 
-wait 30000            # level load + a little play
+# The levels now end themselves after ~3 s (data/scripts/prof_skip.c), so this
+# window carries the run across several level boundaries -- which is the only
+# way to see the sprite cache do anything, since the first level of any run is
+# necessarily all cold decodes.
+wait 60000
 
 tap START             # open pause menu
 wait 900
