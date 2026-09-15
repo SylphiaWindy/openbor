@@ -4494,7 +4494,10 @@ void resourceCleanUp()
  * its model and its mask at another sprite; both are detached on the way in, so
  * a cached sprite is always self-contained.
  */
+/* Overridable at build time: the Switch has no environment to read. */
+#ifndef SPRITE_CACHE_DEFAULT_MB
 #define SPRITE_CACHE_DEFAULT_MB 16
+#endif
 
 static unsigned long sprite_cache_budget = SPRITE_CACHE_DEFAULT_MB * 1024UL * 1024UL;
 
