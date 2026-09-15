@@ -31,6 +31,7 @@ void writeToScriptLog(const char *msg);
 int fileExists(char *fnam);
 int dirExists(char *dname, int create);
 stringptr *readFromLogFile(int which);
+void flushLogFiles(void);
 #endif
 
 #ifdef DC

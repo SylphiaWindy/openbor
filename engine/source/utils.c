@@ -243,6 +243,44 @@ CLOSE_AND_QUIT:
 }
 #endif
 
+
+/*
+ * globals.h does #define printf writeToLogFile, and this fflushes on every
+ * call. free_model() alone calls printf 14 times per model for its progress
+ * dots, so unloading a level means thousands of flushes to the SD card.
+ */
+
+/*
+ * How many lines may sit in the stdio buffer before the log is pushed to
+ * storage. One flush per line costs 2.5-3.3 ms on Switch, and the engine
+ * writes one line per cached model: 3,499 writes were 11.4 of the 23.4
+ * seconds it takes to load this mod's pak.
+ *
+ * The flush is there so a crash still leaves the log behind, so this trades
+ * at most LOG_FLUSH_EVERY lines of that against the time. Anything that ends
+ * the program on purpose calls flushLogFiles() and loses nothing.
+ */
+#define LOG_FLUSH_EVERY 32
+
+static int openborLogPending = 0;
+static int scriptLogPending = 0;
+
+void flushLogFiles(void)
+{
+#ifndef DC
+    if(openborLog)
+    {
+        fflush(openborLog);
+        openborLogPending = 0;
+    }
+    if(scriptLog)
+    {
+        fflush(scriptLog);
+        scriptLogPending = 0;
+    }
+#endif
+}
+
 void writeToLogFile(const char *msg, ...)
 {
     va_list arglist;
@@ -264,7 +302,11 @@ void writeToLogFile(const char *msg, ...)
     va_start(arglist, msg);
     vfprintf(openborLog, msg, arglist);
     va_end(arglist);
-    fflush(openborLog);
+    if(++openborLogPending >= LOG_FLUSH_EVERY)
+    {
+        fflush(openborLog);
+        openborLogPending = 0;
+    }
 #endif
 }
 
@@ -280,7 +322,11 @@ void writeToScriptLog(const char *msg)
         }
     }
     fwrite(msg, 1, strlen(msg), scriptLog);
-    fflush(scriptLog);
+    if(++scriptLogPending >= LOG_FLUSH_EVERY)
+    {
+        fflush(scriptLog);
+        scriptLogPending = 0;
+    }
 #endif
 }
 
