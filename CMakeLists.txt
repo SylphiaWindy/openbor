@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.1)
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
-project(OpenBOR)
+project(OpenBOR2018)
 # Version hbmenu shows, and the name of the release archive.
 #
 # Derived from the repository rather than written out: a literal names the
