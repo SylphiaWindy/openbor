@@ -15,6 +15,7 @@
 #include "video.h"
 #include "menu.h"
 #include "prof.h"
+#include "autoplay.h"
 #include <time.h>
 #include <unistd.h>
 
@@ -149,6 +150,9 @@ int main(int argc, char *argv[])
 	setSystemRam();
 	initSDL();
 	prof_log("main: initSDL done, %.3f ms", PROF_SINCE(_p_boot));
+#ifdef BOR_PROF
+	autoplay_init();
+#endif
 
 	packfile_mode(0);
 

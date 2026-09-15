@@ -1,0 +1,32 @@
+# Profiling run: boot -> title -> New Game -> difficulty -> a level -> End Game.
+#
+# ATTACK confirms everywhere on the way in and every menu defaults to the entry
+# we want, so mashing it clears the logo, the intro scene (whose page count we
+# cannot know), the title and Choose Mode.  Player 1 joins on its own.
+#
+# The difficulty screen is not a menu: selarcade.txt spawns standing "enemies"
+# whose pain animation runs setglobalvar("difficulty", N).  The loose override
+# data/levels/selarcade.txt parks one on the player's spawn, so the same
+# mashing picks a difficulty without walking.
+#
+# Ending the level matters as much as loading it -- unload_level is where the
+# script teardown cost shows up -- so leave via the pause menu rather than
+# killing the process.  pausemenu() is a two-entry toggle: START opens it,
+# UP/DOWN flips Continue -> End Game, START confirms.
+
+mash ATTACK 20000     # logo, intro, title, Choose Mode, difficulty
+
+wait 25000            # level load + a little play
+
+tap START             # open pause menu
+wait 900
+tap DOWN              # Continue -> End Game
+wait 900
+tap ATTACK            # confirm the choice
+wait 900
+tap START             # and again to leave the level
+
+wait 5000             # game over / score tally
+tap START             # the credits screen wants its own press
+wait 4000
+quit

@@ -464,6 +464,7 @@ endif
 
 ifdef BUILD_SDL_IO
 GAME_CONSOLE   += sdl/joysticks.o                                                                   \
+                  sdl/autoplay.o                                                                     \
                   sdl/control.o                                                                     \
                   sdl/sblaster.o                                                                    \
                   sdl/timer.o                                                                       \

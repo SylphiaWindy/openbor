@@ -23,3 +23,10 @@ cmake-build*
 /build.switch/
 /build.debug/
 /build.dbg/
+
+# host profiling runs (see engine/autoplay-level.txt)
+/engine/OpenBOR
+/engine/OpenBOR_prof.log
+/engine/Logs/
+/engine/Paks/
+/engine/Saves/

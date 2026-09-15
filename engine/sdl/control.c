@@ -11,6 +11,7 @@
 #include "video.h"
 #include "globals.h"
 #include "control.h"
+#include "autoplay.h"
 #include "stristr.h"
 #include "sblaster.h"
 #include "joysticks.h"
@@ -1096,6 +1097,10 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 
 	getPads(keystate,keystate_def);
 
+#ifdef BOR_PROF
+	u64 scripted = autoplay_update();
+#endif
+
 	for(player = 0; player < numplayers; player++){
 
 		pcontrols = playercontrols[player];
@@ -1139,6 +1144,11 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 				}
 			}
 		}
+#ifdef BOR_PROF
+		/* Scripted input lands exactly where a real pad would. */
+		if(player == 0) k |= scripted;
+#endif
+
 		pcontrols->kb_break = 0;
 		pcontrols->newkeyflags = k & (~pcontrols->keyflags);
 		pcontrols->keyflags = k;
