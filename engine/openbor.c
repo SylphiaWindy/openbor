@@ -19,6 +19,75 @@
 #include "Instruction.h"
 
 PROF_ACC(prof_load_cached_model);
+PROF_ACC(prof_mc_parseargs);        // splitting a model.txt line into args
+PROF_ACC(prof_mc_lookup);           // arg 0 -> model command id
+PROF_ACC(prof_mc_nextline);         // advancing to the next line
+PROF_ACC(prof_loadsprite_scan);     // the linear sweep inside loadsprite()
+PROF_ACC(prof_ls_decode);           // loadbitmap: pull the gif and decode it
+PROF_ACC(prof_ls_encode);           // clip + encode into the sprite format
+PROF_ACC(prof_ls_palette);          // loadimagepalette for a model's first frame
+PROF_ACC(prof_frame_peek);          // the look-ahead that counts an anim's frames
+#ifdef BOR_PROF
+/*
+ * Where the model-txt parse loop spends its time, per command.
+ *
+ * load_cached_model is ~90% of a level load, and neither the script compiler
+ * nor pak I/O accounts for most of it -- what is left is this loop: 3400 lines
+ * of switch over ~370 commands.  Timing every case by hand is not practical,
+ * so keep a histogram keyed by command id; it says which handful to go read.
+ */
+static uint64_t prof_mc_us[CMD_MODEL_THE_END];
+static uint64_t prof_mc_n[CMD_MODEL_THE_END];
+
+extern List *modelcmdlist;          /* defined below, next to the other lists */
+
+static const char *prof_model_cmd_name(int cmd)
+{
+    if(!modelcmdlist) return "?";
+    List_Reset(modelcmdlist);
+    do
+    {
+        if((int)(size_t)List_Retrieve(modelcmdlist) == cmd)
+        {
+            return List_GetName(modelcmdlist);
+        }
+    } while(List_GotoNext(modelcmdlist));
+    return "?";
+}
+
+void prof_model_cmd_report(int top)
+{
+    int i, r, best;
+    uint64_t total = 0;
+    char seen[CMD_MODEL_THE_END];
+
+    memset(seen, 0, sizeof(seen));
+    for(i = 0; i < CMD_MODEL_THE_END; i++) total += prof_mc_us[i];
+    if(!total) return;
+
+    prof_log("    model-txt parse loop: %.3f ms", (double)total / 1000.0);
+    for(r = 0; r < top; r++)
+    {
+        best = -1;
+        for(i = 0; i < CMD_MODEL_THE_END; i++)
+            if(!seen[i] && prof_mc_us[i] && (best < 0 || prof_mc_us[i] > prof_mc_us[best]))
+                best = i;
+        if(best < 0) break;
+        seen[best] = 1;
+        prof_log("      %-22s %8llu x %10.3f ms  (%4.1f%%)",
+                 prof_model_cmd_name(best),
+                 (unsigned long long)prof_mc_n[best],
+                 (double)prof_mc_us[best] / 1000.0,
+                 100.0 * (double)prof_mc_us[best] / (double)total);
+    }
+}
+
+void prof_model_cmd_reset(void)
+{
+    memset(prof_mc_us, 0, sizeof(prof_mc_us));
+    memset(prof_mc_n, 0, sizeof(prof_mc_n));
+}
+#endif
 PROF_ACC(prof_loadsprite2);
 PROF_ACC(prof_cache_model_sprites);
 PROF_ACC(prof_preload_cached_model);
@@ -4493,6 +4562,10 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
     int clipl, clipr, clipt, clipb;
     s_sprite_list *curr = NULL, *head = NULL, *toshare = NULL;
 
+    /* calls = how many times we swept; bytes = entries compared, i.e. the
+       quadratic term made visible. */
+    prof_loadsprite_scan.calls++;
+    prof_loadsprite_scan.bytes += (uint64_t)sprites_loaded;
     for(i = 0; i < sprites_loaded; i++)
     {
         if(sprite_map && sprite_map[i].node)
@@ -4526,12 +4599,17 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
         return sprites_loaded - 1;
     }
 
-    bitmap = loadbitmap(filename, packfile, bmpformat);
+    {
+        PROF_T0(_p_lb);
+        bitmap = loadbitmap(filename, packfile, bmpformat);
+        prof_acc_add(&prof_ls_decode, _p_lb, 0);
+    }
     if(bitmap == NULL)
     {
         borShutdown(1, "Unable to load file '%s'\n", filename);
     }
 
+    PROF_T0(_p_enc);
     clipbitmap(bitmap, &clipl, &clipr, &clipt, &clipb);
 
     len = strlen(filename);
@@ -4547,6 +4625,7 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
     memcpy(curr->filename, filename, len);
     curr->filename[len] = 0;
     encodesprite(ofsx - clipl, ofsy - clipt, bitmap, curr->sprite);
+    prof_acc_add(&prof_ls_encode, _p_enc, 0);
     if(sprite_list == NULL)
     {
         sprite_list = curr;
@@ -9575,10 +9654,21 @@ static s_model *load_cached_model_impl(char *name, char *owner, char unload, boo
     {
         //command = GET_ARG(0);
         line++;
-        if(ParseArgs(&arglist, buf + pos, argbuf))
+        int _p_parsed;
+        {
+            PROF_T0(_p_pa);
+            _p_parsed = ParseArgs(&arglist, buf + pos, argbuf);
+            prof_acc_add(&prof_mc_parseargs, _p_pa, 0);
+        }
+        if(_p_parsed)
         {
             command = GET_ARG(0);
-            cmd = getModelCommand(modelcmdlist, command);
+            {
+                PROF_T0(_p_lk);
+                cmd = getModelCommand(modelcmdlist, command);
+                prof_acc_add(&prof_mc_lookup, _p_lk, 0);
+            }
+            PROF_T0(_p_cmd);
             command_skip_this = false;
 
             //if (cmd != CMD_MODEL_FRAME) framenum = 0;
@@ -12028,6 +12118,7 @@ static s_model *load_cached_model_impl(char *name, char *owner, char unload, boo
                 {
                     framecount = -framecount;
                 }
+                PROF_T0(_p_pk);
                 while(!frameset)
                 {
                     value3 = findarg(buf + pos + peek, 0);
@@ -12049,6 +12140,7 @@ static s_model *load_cached_model_impl(char *name, char *owner, char unload, boo
                         ++peek;
                     }
                 }
+                prof_acc_add(&prof_frame_peek, _p_pk, 0);
                 value = GET_ARG(1);
 
                 // Log info.
@@ -12073,7 +12165,10 @@ static s_model *load_cached_model_impl(char *name, char *owner, char unload, boo
                             // Allocate memory for color table.
                             newchar->palette = malloc(PAL_BYTES);
                             //
-                            if(loadimagepalette(value, packfile, newchar->palette) == 0)
+                            PROF_T0(_p_pal);
+                            int _p_palok = loadimagepalette(value, packfile, newchar->palette);
+                            prof_acc_add(&prof_ls_palette, _p_pal, 0);
+                            if(_p_palok == 0)
                             {
                                 //printf("\t\t\t%s%s\n", "Failed to load color table from image: ", value);
                                 goto lCleanup;
@@ -12424,9 +12519,20 @@ static s_model *load_cached_model_impl(char *name, char *owner, char unload, boo
                 }
             }
         }
+#ifdef BOR_PROF
+            if((int)cmd >= 0 && (int)cmd < CMD_MODEL_THE_END)
+            {
+                prof_mc_us[cmd] += prof_us() - _p_cmd;
+                prof_mc_n[cmd]++;
+            }
+#endif
         }
         // Go to next line
-        pos += getNewLineStart(buf + pos);
+        {
+            PROF_T0(_p_nl);
+            pos += getNewLineStart(buf + pos);
+            prof_acc_add(&prof_mc_nextline, _p_nl, 0);
+        }
     }
 
 
@@ -13382,6 +13488,18 @@ int load_models()
     printf("\nLoading models...............\tDone!\n");
     prof_log("load_models: %.3f ms total", PROF_SINCE(_p_lm));
     prof_acc_report(&prof_load_cached_model, 1);
+    prof_acc_report(&prof_mc_parseargs, 1);
+    prof_acc_report(&prof_mc_lookup, 1);
+    prof_acc_report(&prof_mc_nextline, 1);
+    prof_acc_report(&prof_loadsprite_scan, 1);
+    prof_acc_report(&prof_ls_decode, 1);
+    prof_acc_report(&prof_ls_encode, 1);
+    prof_acc_report(&prof_ls_palette, 1);
+    prof_acc_report(&prof_frame_peek, 1);
+#ifdef BOR_PROF
+    prof_model_cmd_report(12);
+    prof_model_cmd_reset();
+#endif
     prof_acc_report(&prof_preload_cached_model, 1);
     prof_acc_report(&prof_buffer_pakfile, 1);
     prof_acc_report(&prof_update_loading, 1);
@@ -16719,6 +16837,18 @@ lCleanup:
 
     prof_log("load_level(%s): %.3f ms total", filename, PROF_SINCE(_p_ll));
     prof_acc_report(&prof_load_cached_model, 1);
+    prof_acc_report(&prof_mc_parseargs, 1);
+    prof_acc_report(&prof_mc_lookup, 1);
+    prof_acc_report(&prof_mc_nextline, 1);
+    prof_acc_report(&prof_loadsprite_scan, 1);
+    prof_acc_report(&prof_ls_decode, 1);
+    prof_acc_report(&prof_ls_encode, 1);
+    prof_acc_report(&prof_ls_palette, 1);
+    prof_acc_report(&prof_frame_peek, 1);
+#ifdef BOR_PROF
+    prof_model_cmd_report(12);
+    prof_model_cmd_reset();
+#endif
     prof_acc_report(&prof_preload_cached_model, 1);
     prof_acc_report(&prof_buffer_pakfile, 1);
     prof_acc_report(&prof_update_loading, 1);

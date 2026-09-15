@@ -613,6 +613,7 @@ typedef enum modelCommand
     CMD_MODEL_WEAPONFRAME,
     CMD_MODEL_WEAPONS,
 
+    CMD_MODEL_THE_END           /* count, for per-command instrumentation */
 } modelCommands;
 
 typedef enum
