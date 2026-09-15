@@ -76,9 +76,9 @@ extern const s_drawmethod plainmethod;
 
 typedef struct{
 	stringptr *buf;
-	int *pos;
+	ptrdiff_t *pos;		// byte offset of each row's first character
 	int line;
-	int rows;
+	ptrdiff_t rows;
 	char ready;
 }s_logfile;
 static s_logfile logfile[2];
@@ -96,61 +96,81 @@ static int Control()
 	return pControl();
 }
 
+/*
+	Builds a row index over each log file: pos[r] is the offset of row r's
+	first character, and every '\n' / '\r' is turned into a terminator so a
+	row can be printed straight out of the buffer.
+
+	This used to grow pos[] one row at a time, reallocating and copying the
+	whole array twice per row -- two malloc/free pairs and O(n^2) copying for
+	every line in the file.  A 11k-line ScriptLog.txt cost 15 seconds of the
+	startup on Switch.  Count the rows first, then allocate once.
+
+	Note the log being read is the *previous* run's: the files are opened
+	"wt" lazily, on this run's first write, which happens after a pak is
+	chosen.  That is the point of the viewer -- it shows why the last run
+	died -- so the read stays where it is.
+*/
 static void getAllLogs()
 {
-	ptrdiff_t i, j, k;
+	ptrdiff_t i, j, r;
+	int k;
+
 	for(i=0; i<2; i++)
 	{
 		logfile[i].buf = readFromLogFile(i);
-		if(logfile[i].buf != NULL)
-		{
-			logfile[i].pos = malloc(++logfile[i].rows * sizeof(int));
-			if(logfile[i].pos == NULL) return;
-			memset(logfile[i].pos, 0, logfile[i].rows * sizeof(int));
+		if(logfile[i].buf == NULL) continue;
 
-			for(k=0, j=0; j<logfile[i].buf->size; j++)
-			{
-				if(!k)
-				{
-					logfile[i].pos[logfile[i].rows - 1] = j;
-					k = 1;
-				}
-				if(logfile[i].buf->ptr[j]=='\n')
-				{
-					int *_pos = malloc(++logfile[i].rows * sizeof(int));
-					if(_pos == NULL) return;
-					memcpy(_pos, logfile[i].pos, (logfile[i].rows - 1) * sizeof(int));
-					_pos[logfile[i].rows - 1] = 0;
-					free(logfile[i].pos);
-					logfile[i].pos = NULL;
-					logfile[i].pos = malloc(logfile[i].rows * sizeof(int));
-					if(logfile[i].pos == NULL) return;
-					memcpy(logfile[i].pos, _pos, logfile[i].rows * sizeof(int));
-					free(_pos);
-					_pos = NULL;
-					logfile[i].buf->ptr[j] = 0;
-					k = 0;
-				}
-				if(logfile[i].buf->ptr[j]=='\r') logfile[i].buf->ptr[j] = 0;
-				if(logfile[i].rows>0xFFFFFFFE) break;
-			}
-			logfile[i].ready = 1;
+		// pass 1: one row per '\n', plus the trailing partial row
+		logfile[i].rows = 1;
+		for(j=0; j<(ptrdiff_t)logfile[i].buf->size; j++)
+		{
+			if(logfile[i].buf->ptr[j]=='\n') logfile[i].rows++;
 		}
+
+		logfile[i].pos = malloc(logfile[i].rows * sizeof(*logfile[i].pos));
+		if(logfile[i].pos == NULL)
+		{
+			free_string(logfile[i].buf);
+			logfile[i].buf = NULL;
+			logfile[i].rows = 0;
+			continue;
+		}
+		memset(logfile[i].pos, 0, logfile[i].rows * sizeof(*logfile[i].pos));
+
+		// pass 2: record where each row starts, terminate it in place
+		for(r=0, k=0, j=0; j<(ptrdiff_t)logfile[i].buf->size; j++)
+		{
+			if(!k)
+			{
+				logfile[i].pos[r] = j;
+				k = 1;
+			}
+			if(logfile[i].buf->ptr[j]=='\n')
+			{
+				logfile[i].buf->ptr[j] = 0;
+				r++;
+				k = 0;
+			}
+			if(logfile[i].buf->ptr[j]=='\r') logfile[i].buf->ptr[j] = 0;
+		}
+		logfile[i].ready = 1;
 	}
 }
 
 static void freeAllLogs()
 {
 	int i;
+	// unconditional: a log whose index allocation failed still has a buffer
 	for(i=0; i<2; i++)
 	{
-		if(logfile[i].ready)
-		{
-			free_string(logfile[i].buf);
-			logfile[i].buf = NULL;
-			free(logfile[i].pos);
-			logfile[i].pos = NULL;
-		}
+		free_string(logfile[i].buf);
+		logfile[i].buf = NULL;
+		free(logfile[i].pos);
+		logfile[i].pos = NULL;
+		logfile[i].rows = 0;
+		logfile[i].line = 0;
+		logfile[i].ready = 0;
 	}
 }
 
@@ -302,6 +322,7 @@ static void StopBGM()
 
 static void PlayBGM()
 {
+	packfile_music_read_one(filelist, dListCurrentPosition+dListScrollPosition);
 	bgmPlay = packfile_music_play(filelist, bgmFile, bgmLoop, dListCurrentPosition, dListScrollPosition);
 }
 
@@ -647,6 +668,9 @@ static void drawBGMPlayer()
 #endif
 
 	if(!bgmPlay) bgmCurrent = dListCurrentPosition+dListScrollPosition;
+	// on demand: walking a large pak's name table costs seconds, and only the
+	// selected pak's tracks are ever read
+	packfile_music_read_one(filelist, bgmCurrent);
 	if(filename_len < 24)
 		safe_strncpy(bgmListing, filelist[bgmCurrent].filename, strlen(filelist[bgmCurrent].filename) - 4);
 	else
@@ -824,11 +848,13 @@ void Menu()
 				free(filelist);
 				filelist = NULL;
 			}
+			packfile_index_free();
 			borExit(0);
 		}
 	}
 	getBasePath(packfile, filelist[dListCurrentPosition+dListScrollPosition].filename, 1);
 	free(filelist);
+	packfile_index_free();
 
 	// Restore pixelformat default value.
 	pixelformat = PIXEL_x8;

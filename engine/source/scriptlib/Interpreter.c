@@ -27,6 +27,7 @@ void Interpreter_Init(Interpreter *pinterpreter, LPCSTR name, List *pflist)
     pp_context_init(&(pinterpreter->theContext));
 }
 
+
 void Interpreter_Clear(Interpreter *pinterpreter)
 {
     int i, size;
@@ -34,7 +35,6 @@ void Interpreter_Clear(Interpreter *pinterpreter)
     ScriptVariant *pvariant = NULL;
 
     pp_context_destroy(&(pinterpreter->theContext));
-
     StackedSymbolTable_Clear(&(pinterpreter->theSymbolTable));
     Parser_Clear(&(pinterpreter->theParser));
     if(pinterpreter->theInstructionList.solidlist)
@@ -43,7 +43,7 @@ void Interpreter_Clear(Interpreter *pinterpreter)
         for(i = 0; i < size; i++)
         {
             Instruction_Clear(pinterpreter->theInstructionList.solidlist[i]);
-            free((void *)pinterpreter->theInstructionList.solidlist[i]);
+            Instruction_Recycle(pinterpreter->theInstructionList.solidlist[i]);
             pinterpreter->theInstructionList.solidlist[i] = NULL;
         }
     }
@@ -53,7 +53,7 @@ void Interpreter_Clear(Interpreter *pinterpreter)
             pinterpreter->theInstructionList,
             pinstruction = (Instruction *)List_Retrieve(&(pinterpreter->theInstructionList));
             Instruction_Clear(pinstruction);
-            free((void *)pinstruction);
+            Instruction_Recycle(pinstruction);
             pinstruction = NULL;
         );
     }

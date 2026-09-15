@@ -428,6 +428,147 @@ int isRawData()
 
 /////////////////////////////////////////////////////////////////////////////
 
+/////////////////////////////////////////////////////////////////////////////
+//
+// In-memory copy of one pak's file-name table.
+//
+// Until pak_init() switches the engine to the cached path -- that is, for the
+// whole of the pak selection menu -- openPackfile() walked the on-disk table
+// with one 268-byte read() plus one lseek() per entry, for every file opened.
+// A pak with tens of thousands of entries then costs seconds per open, which
+// is what made the menu previews so slow.  Keep the table in RAM instead.
+//
+// Only one pak is held at a time: switching paks releases the previous one,
+// and packfile_index_free() releases whatever is left (the menu calls it on
+// the way out, and pak_init() calls it when it takes over).
+
+#define PAK_INDEX_MAX (64 * 1024 * 1024)    // above this, fall back to the on-disk scan
+
+static char           pak_index_for[PACKFILE_PATH_MAX] = {""};
+static unsigned char *pak_index = NULL;
+static size_t         pak_index_size = 0;
+static unsigned int   pak_index_start = 0;  // where the table begins within the pak
+
+void packfile_index_free(void)
+{
+    if(pak_index)
+    {
+        free(pak_index);
+        pak_index = NULL;
+    }
+    pak_index_size = 0;
+    pak_index_start = 0;
+    pak_index_for[0] = 0;
+}
+
+// 1 when pak_index holds packfilename's table, 0 when the caller must fall
+// back to reading the table off disk.
+static int packfile_index_build(const char *packfilename)
+{
+    int handle;
+    unsigned int magic, version, headerstart;
+    long paksize;
+    size_t size, got;
+    unsigned char *buf;
+    int per = 666;
+
+    if(pak_index && !stricmp(pak_index_for, packfilename))
+    {
+        return 1;
+    }
+    packfile_index_free();
+
+    if(strlen(packfilename) >= PACKFILE_PATH_MAX)
+    {
+        return 0;
+    }
+    if((handle = open(packfilename, O_RDONLY | O_BINARY, per)) == -1)
+    {
+        return 0;
+    }
+    if(read(handle, &magic, 4) != 4 ||
+       read(handle, &version, 4) != 4 || version != SwapLSB32(PACKVERSION))
+    {
+        close(handle);
+        return 0;
+    }
+    if((paksize = lseek(handle, 0, SEEK_END)) < 8 ||
+       lseek(handle, -4, SEEK_END) == -1 ||
+       read(handle, &headerstart, 4) != 4)
+    {
+        close(handle);
+        return 0;
+    }
+    headerstart = SwapLSB32(headerstart);
+    if(headerstart + 4 >= (unsigned int)paksize)
+    {
+        close(handle);
+        return 0;
+    }
+    // the trailing 4 bytes are the header pointer, not part of the table
+    size = (size_t)paksize - 4 - headerstart;
+    if(size > PAK_INDEX_MAX || lseek(handle, headerstart, SEEK_SET) == -1)
+    {
+        close(handle);
+        return 0;
+    }
+    if((buf = malloc(size + 1)) == NULL)
+    {
+        close(handle);
+        return 0;
+    }
+    for(got = 0; got < size; )
+    {
+        int r = read(handle, buf + got, size - got);
+        if(r <= 0)
+        {
+            break;
+        }
+        got += r;
+    }
+    close(handle);
+    if(got != size)
+    {
+        free(buf);
+        return 0;
+    }
+    buf[size] = 0;      // so a malformed trailing name cannot run off the end
+
+    pak_index = buf;
+    pak_index_size = size;
+    pak_index_start = headerstart;
+    strcpy(pak_index_for, packfilename);
+    return 1;
+}
+
+// Reads the entry at *off and advances *off past it.  0 ends the walk.
+// Mirrors the on-disk loop's "at least 13 bytes left" condition.
+static int pak_index_entry(size_t *off, unsigned int *pns_len, unsigned int *filestart,
+                           unsigned int *filesize, const char **name)
+{
+    unsigned char *e;
+    unsigned int len;
+
+    if(!pak_index || *off + 13 > pak_index_size)
+    {
+        return 0;
+    }
+    e = pak_index + *off;
+    len = readlsb32(e);
+    if(len < 13 || len > pak_index_size - *off)
+    {
+        return 0;
+    }
+    *pns_len   = len;
+    *filestart = readlsb32(e + 4);
+    *filesize  = readlsb32(e + 8);
+    *name      = (const char *)(e + 12);
+    *off      += len;
+    return 1;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 int openpackfile(const char *filename, const char *packfilename)
 {
 #ifdef VERBOSE
@@ -563,6 +704,32 @@ int openPackfile(const char *filename, const char *packfilename)
         close(handle);
         return -1;
     }
+
+    if(packfile_index_build(packfilename))
+    {
+        size_t off = 0;
+        unsigned int pns_len, filestart, filesize;
+        const char *name;
+
+        while(pak_index_entry(&off, &pns_len, &filestart, &filesize, &name))
+        {
+            if(stricmp(filename, name) == 0)
+            {
+                packhandle[h] = handle;
+                packfilesize[h] = filesize;
+                lseek(handle, filestart, SEEK_SET);
+                return h;
+            }
+        }
+#ifdef VERBOSE
+        printf ("err filename not found (index)\n");
+#endif
+        close(handle);
+        return -1;
+    }
+
+    // No index (unreadable, or an implausibly large table): walk the table on
+    // disk, one entry per read/lseek pair, the way this always used to work.
 
     // Seek to position of headerstart indicator
     if(lseek(handle, -4, SEEK_END) == -1)
@@ -1272,6 +1439,9 @@ int pak_init()
     pSeekPackfile = seekPackfileCached;
     pClosePackfile = closePackfileCached;
 
+    // the menu-phase index is dead weight from here on
+    packfile_index_free();
+
 #if DC
     if(cd_lba)
     {
@@ -1437,71 +1607,80 @@ void packfile_get_titlename(char In[MAX_FILENAME_LEN], char Out[MAX_FILENAME_LEN
     }
 }
 
+// Walk one pak's name table and collect its BGM tracks.  Cheap to call
+// repeatedly: bgmScanned makes every call after the first a no-op.
+//
+// This used to run for every pak before the menu was drawn, which cost the
+// sum of all their table sizes.  Only the selected pak's tracks are ever read
+// (see nTracks / bgmTracks / bgmFileName in sdl/menu.c), so it is now done on
+// demand, and off the in-memory index rather than 268 bytes at a time.
+void packfile_music_read_one(fileliststruct *filelist, int index)
+{
+    char saved[MAX_FILENAME_LEN];
+    char namebuf[MAX_FILENAME_LEN];
+    size_t off = 0;
+    unsigned int pns_len, filestart, filesize;
+    const char *name, *dot;
+    unsigned int entries = 0;
+
+    if(filelist == NULL || index < 0 || filelist[index].bgmScanned)
+    {
+        return;
+    }
+    filelist[index].bgmScanned = 1;
+    memset(filelist[index].bgmTracks, 0, MAX_TRACKS * sizeof(unsigned int));
+    filelist[index].nTracks = 0;
+
+    if(!stristr(filelist[index].filename, ".pak"))
+    {
+        return;
+    }
+
+    // getBasePath writes the global packfile; the caller's value has to survive.
+    // Both buffers are MAX_FILENAME_LEN and packfile is always terminated.
+    strcpy(saved, packfile);
+    getBasePath(packfile, filelist[index].filename, 1);
+
+    if(packfile_index_build(packfile))
+    {
+        while(pak_index_entry(&off, &pns_len, &filestart, &filesize, &name))
+        {
+            entries++;
+            strncpy(namebuf, name, MAX_FILENAME_LEN - 1);
+            namebuf[MAX_FILENAME_LEN - 1] = 0;
+
+            dot = strrchr(namebuf, '.');
+            if((dot && (!stricmp(dot, ".bor") || !stricmp(dot, ".ogg"))) || (stristr(namebuf, "music")))
+            {
+                if(!stristr(namebuf, ".bor") && !stristr(namebuf, ".ogg"))
+                {
+                    continue;
+                }
+                if(filelist[index].nTracks < MAX_TRACKS)
+                {
+                    packfile_get_titlename(namebuf, filelist[index].bgmFileName[filelist[index].nTracks]);
+                    // absolute offset of this entry, what packfile_music_play seeks to
+                    filelist[index].bgmTracks[filelist[index].nTracks] =
+                        pak_index_start + (unsigned int)(off - pns_len);
+                    filelist[index].nTracks++;
+                }
+            }
+        }
+    }
+
+    strcpy(packfile, saved);
+}
+
+// Kept for the ports that still scan everything up front (wii, vita).
 void packfile_music_read(fileliststruct *filelist, int dListTotal)
 {
-    pnamestruct pn;
-    FILE *fd;
-    int len, i;
-    unsigned int off;
-    char pack[4], *p = NULL;
+    int i;
     for(i = 0; i < dListTotal; i++)
     {
-        getBasePath(packfile, filelist[i].filename, 1);
-        if(stristr(packfile, ".pak"))
-        {
-            memset(filelist[i].bgmTracks, 0, MAX_TRACKS * sizeof(unsigned int));
-            filelist[i].nTracks = 0;
-            fd = fopen(packfile, "rb");
-            if(fd == NULL)
-            {
-                continue;
-            }
-            if(!fread(pack, 4, 1, fd))
-            {
-                goto closepak;
-            }
-            if(fseek(fd, -4, SEEK_END) < 0)
-            {
-                goto closepak;
-            }
-            if(!fread(&off, 4, 1, fd))
-            {
-                goto closepak;
-            }
-            if(fseek(fd, off, SEEK_SET) < 0)
-            {
-                goto closepak;
-            }
-            while((len = fread(&pn, 1, sizeof(pn), fd)) > 12)
-            {
-                p = strrchr(pn.namebuf, '.');
-                if((p && (!stricmp(p, ".bor") || !stricmp(p, ".ogg"))) || (stristr(pn.namebuf, "music")))
-                {
-                    if(!stristr(pn.namebuf, ".bor") && !stristr(pn.namebuf, ".ogg"))
-                    {
-                        goto nextpak;
-                    }
-                    if(filelist[i].nTracks < MAX_TRACKS)
-                    {
-                        packfile_get_titlename(pn.namebuf, filelist[i].bgmFileName[filelist[i].nTracks]);
-                        filelist[i].bgmTracks[filelist[i].nTracks] = off;
-                        filelist[i].nTracks++;
-                    }
-                }
-nextpak:
-                off += pn.pns_len;
-                if(fseek(fd, off, SEEK_SET) < 0)
-                {
-                    goto closepak;
-                }
-            }
-closepak:
-            fclose(fd);
-        }
+        packfile_music_read_one(filelist, i);
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////
 
 int packfile_music_play(struct fileliststruct *filelist, FILE *bgmFile, int bgmLoop, int curPos, int scrPos)
 {
