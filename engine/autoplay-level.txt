@@ -26,7 +26,9 @@ tap ATTACK            # confirm the choice
 wait 900
 tap START             # and again to leave the level
 
-wait 5000             # game over / score tally
-tap START             # the credits screen wants its own press
-wait 4000
+# Nothing to press after End Game: by the time the tally and credits have
+# gone by the game is back at the title on its own, and a START there picks
+# "Start Game" and begins a whole second playthrough.  Every measurement is
+# already taken at this point, so just leave.
+wait 6000
 quit
