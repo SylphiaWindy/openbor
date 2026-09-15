@@ -16,6 +16,7 @@
 #include "models.h"
 #include "translation.h"
 #include "prof.h"
+#include "Instruction.h"
 
 PROF_ACC(prof_load_cached_model);
 PROF_ACC(prof_loadsprite2);
@@ -23,6 +24,23 @@ PROF_ACC(prof_cache_model_sprites);
 PROF_ACC(prof_preload_cached_model);
 PROF_ACC(prof_buffer_pakfile);
 PROF_ACC(prof_update_loading);
+PROF_ACC(prof_free_model);
+
+/* Set to 1 to keep models loaded at level end. Measured as a large win but
+   unbounded: this mod has 868 loadable models and holding them all would run
+   past a gigabyte, so the cost of freeing is attacked instead. */
+#define BOR_KEEP_MODELS 0
+
+/*
+ * getRamStatus() is two mallinfo() calls, and mallinfo walks the whole
+ * allocator arena. It was 59 ms a call early in a session and 221 ms later on,
+ * four calls per level change and climbing, for two lines of debug output.
+ */
+#define BOR_DEBUG_RAM_STATUS 0
+PROF_ACC(prof_fm_animlist);
+PROF_ACC(prof_fm_colourmap);
+PROF_ACC(prof_fm_scripts);
+PROF_ACC(prof_fm_delete);
 #include "soundmix.h"
 
 #define NaN 0xAAAAAAAA
@@ -1054,7 +1072,11 @@ int load_script(Script *script, char *file)
         return 0;
     }
 
-    failed = !Script_AppendText(script, buf, file);
+    {
+        PROF_T0(_p_t);
+        failed = !Script_AppendText(script, buf, file);
+        prof_acc_add(&prof_script_append, _p_t, size);
+    }
 
     if(buf != NULL)
     {
@@ -6024,7 +6046,18 @@ static void cache_model_sprites_impl(s_model *m, int ld)
 }
 
 // Unload single model from memory
+static int free_model_impl(s_model *model);
+
 int free_model(s_model *model)
+{
+    int _p_r;
+    PROF_T0(_p_t);
+    _p_r = free_model_impl(model);
+    prof_acc_add(&prof_free_model, _p_t, 0);
+    return _p_r;
+}
+
+static int free_model_impl(s_model *model)
 {
     int i;
     if(!model)
@@ -6035,13 +6068,16 @@ int free_model(s_model *model)
 
     if(hasFreetype(model, MF_ANIMLIST))
     {
+        PROF_T0(_p_t);
         anim_list_delete(model->index);
+        prof_acc_add(&prof_fm_animlist, _p_t, 0);
     }
 
     printf(".");
 
     if(hasFreetype(model, MF_COLOURMAP))
     {
+        PROF_T0(_p_t);
         for(i = 0; i < model->maps_loaded; i++)
         {
             if(model->colourmap[i] != NULL)
@@ -6056,6 +6092,7 @@ int free_model(s_model *model)
         }
         model->colourmap = NULL;
         model->maps_loaded = 0;
+        prof_acc_add(&prof_fm_colourmap, _p_t, (uint64_t)i);
     }
 
     printf(".");
@@ -6111,13 +6148,19 @@ int free_model(s_model *model)
 
     if(hasFreetype(model, MF_SCRIPTS))
     {
+        PROF_T0(_p_t);
         clear_all_scripts(model->scripts, 2);
         free_all_scripts(&model->scripts);
+        prof_acc_add(&prof_fm_scripts, _p_t, 0);
     }
     printf(".");
 
     model_cache[model->index].model = NULL;
-    deleteModel(model->name);
+    {
+        PROF_T0(_p_t);
+        deleteModel(model->name);
+        prof_acc_add(&prof_fm_delete, _p_t, 0);
+    }
     printf(".");
 
     printf("Done.\n");
@@ -13343,6 +13386,14 @@ int load_models()
     prof_acc_report(&prof_buffer_pakfile, 1);
     prof_acc_report(&prof_update_loading, 1);
     prof_acc_report(&prof_loadsprite2, 1);
+    prof_acc_report(&prof_getfreeram, 1);
+    prof_acc_report(&prof_writelog, 1);
+    prof_acc_report(&prof_script_compile, 1);
+    prof_acc_report(&prof_compile_instr, 1);
+    prof_acc_report(&prof_script_init, 1);
+    prof_acc_report(&prof_script_append, 1);
+    Instruction_PoolStats();
+    prof_acc_report(&prof_ins_pool, 0);
     packfile_prof_report();
     prof_flush("models loaded");
 
@@ -15143,9 +15194,13 @@ void unload_level()
     s_model *temp;
     int i;
     PROF_T0(_p_ul);
+    PROF_T0(_p_st);
+    double _p_kill = 0, _p_bg = 0, _p_ram1 = 0, _p_freelvl = 0, _p_models = 0, _p_ram2 = 0;
 
     kill_all();
+    _p_kill = PROF_SINCE(_p_st); _p_st = prof_us();
     unload_background();
+    _p_bg = PROF_SINCE(_p_st); _p_st = prof_us();
 
     if(level)
     {
@@ -15157,11 +15212,15 @@ void unload_level()
         level->waiting = 0;
 
         printf("Level Unloading: '%s'\n", level->name);
+#if BOR_DEBUG_RAM_STATUS
         getRamStatus(BYTES);
+#endif
+        _p_ram1 = PROF_SINCE(_p_st); _p_st = prof_us();
         free(level->name);
         level->name = NULL;
         free_level(level);
         level = NULL;
+        _p_freelvl = PROF_SINCE(_p_st); _p_st = prof_us();
         temp = getFirstModel();
         do
         {
@@ -15173,7 +15232,19 @@ void unload_level()
             {
                 cache_model_sprites(temp, 0);
             }
-            if((temp->unload & 1))
+            /*
+             * BOR_KEEP_MODELS: leave loaded models in place at level end.
+             *
+             * Every load line in this mod's levels passes unload=1, so a level
+             * change destroys ~66 script interpreters (704k instructions) and
+             * the next level re-parses ~30 of the same ones. Measured at 13.6 s
+             * of teardown plus 9.7 s of reload.
+             *
+             * Sprites still unload (the unload & 2 branch above), so what is
+             * held is the parsed model and its scripts. Memory grows with the
+             * number of distinct levels visited, which is the thing to watch.
+             */
+            if((temp->unload & 1) && !BOR_KEEP_MODELS)
             {
                 free_model(temp);
                 temp = getCurrentModel();
@@ -15184,8 +15255,12 @@ void unload_level()
             }
         }
         while(temp);
+        _p_models = PROF_SINCE(_p_st); _p_st = prof_us();
+#if BOR_DEBUG_RAM_STATUS
         printf("RAM Status:\n");
         getRamStatus(BYTES);
+#endif
+        _p_ram2 = PROF_SINCE(_p_st);
 
 
     }
@@ -15219,7 +15294,34 @@ void unload_level()
     light.x = 128;
     light.y = 64;
     gfx_y_offset = gfx_x_offset = gfx_y_offset_adj = 0;    // Added so select screen graphics display correctly
-    prof_log("unload_level: %.3f ms", PROF_SINCE(_p_ul));
+    prof_log("unload_level: %.3f ms  [kill_all %.1f  unload_background %.1f"
+             "  getRamStatus#1 %.1f  free_level %.1f  model loop %.1f  getRamStatus#2 %.1f]",
+             PROF_SINCE(_p_ul), _p_kill, _p_bg, _p_ram1, _p_freelvl, _p_models, _p_ram2);
+    prof_acc_report(&prof_cache_model_sprites, 1);
+    prof_acc_report(&prof_free_model, 1);
+    prof_acc_report(&prof_fm_animlist, 1);
+    prof_acc_report(&prof_fm_colourmap, 1);
+    prof_acc_report(&prof_fm_scripts, 1);
+    prof_acc_report(&prof_sc_clearentry, 1);
+    prof_acc_report(&prof_sc_varlist, 1);
+    prof_acc_report(&prof_sc_interp, 1);
+    prof_acc_report(&prof_ic_ppctx, 1);
+    prof_acc_report(&prof_ic_symtab, 1);
+    prof_acc_report(&prof_ic_parser, 1);
+    prof_acc_report(&prof_ic_instr, 1);
+    prof_acc_report(&prof_ic_lists, 1);
+    prof_acc_report(&prof_in_val, 1);
+    prof_acc_report(&prof_in_reflist, 1);
+    prof_acc_report(&prof_in_label, 1);
+    prof_acc_report(&prof_in_token, 1);
+    prof_acc_report(&prof_in_free, 1);
+    prof_acc_report(&prof_in_free_slow, 1);
+    prof_log("      %-26s worst single free %.3f ms", "prof_in_free_max",
+             prof_in_free_max.us / 1000.0);
+    prof_acc_reset(&prof_in_free_max);
+    prof_acc_report(&prof_fm_delete, 1);
+    prof_acc_report(&prof_getfreeram, 1);
+    prof_acc_report(&prof_writelog, 1);
 }
 
 
@@ -15375,9 +15477,9 @@ void load_level(char *filename)
 
     printf("Level Loading:   '%s'\n", filename);
 
-
-
+#if BOR_DEBUG_RAM_STATUS
     getRamStatus(BYTES);
+#endif
 
     if(isLoadingScreenTypeBg(loadingbg[1].set))
     {
@@ -16621,6 +16723,14 @@ lCleanup:
     prof_acc_report(&prof_buffer_pakfile, 1);
     prof_acc_report(&prof_update_loading, 1);
     prof_acc_report(&prof_loadsprite2, 1);
+    prof_acc_report(&prof_getfreeram, 1);
+    prof_acc_report(&prof_writelog, 1);
+    prof_acc_report(&prof_script_compile, 1);
+    prof_acc_report(&prof_compile_instr, 1);
+    prof_acc_report(&prof_script_init, 1);
+    prof_acc_report(&prof_script_append, 1);
+    Instruction_PoolStats();
+    prof_acc_report(&prof_ins_pool, 0);
     packfile_prof_report();
     prof_flush("level loaded");
 }
@@ -36722,6 +36832,7 @@ void borShutdown(int status, char *msg, ...)
 
 
     getRamStatus(BYTES);
+    flushLogFiles();
     savesettings();
 
     enginecreditsScreen = 1;		//entry point for the engine credits screen.
@@ -38138,6 +38249,16 @@ int playlevel(char *filename)
     PROF_T0(_p_st);
 
     prof_log("playlevel(%s): start", filename);
+
+    /* so the level's report counts this level's work, not the select screen's */
+    prof_acc_reset(&prof_load_cached_model);
+    prof_acc_reset(&prof_preload_cached_model);
+    prof_acc_reset(&prof_buffer_pakfile);
+    prof_acc_reset(&prof_update_loading);
+    prof_acc_reset(&prof_loadsprite2);
+    prof_acc_reset(&prof_getfreeram);
+    prof_acc_reset(&prof_writelog);
+    prof_acc_reset(&prof_free_model);
 
     kill_all();
     prof_log("  playlevel: kill_all %.3f ms", PROF_SINCE(_p_st));

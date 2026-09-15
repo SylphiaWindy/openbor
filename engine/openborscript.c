@@ -29,6 +29,7 @@
 
 #include "config.h"
 #include "openbor.h"
+#include "prof.h"
 #include "soundmix.h"
 #include "globals.h"
 #include "ImportCache.h"
@@ -507,6 +508,10 @@ void Script_Copy(Script *pdest, Script *psrc, int localclear)
     execute_init_method(pdest, 1, localclear);
 }
 
+prof_acc prof_sc_clearentry = { "prof_sc_clearentry", 0, 0, 0 };
+prof_acc prof_sc_varlist    = { "prof_sc_varlist",    0, 0, 0 };
+prof_acc prof_sc_interp     = { "prof_sc_interp",     0, 0, 0 };
+
 void Script_Clear(Script *pscript, int localclear)
 {
     Script *temp;
@@ -516,6 +521,7 @@ void Script_Clear(Script *pscript, int localclear)
     //Execute clear method
     if(pscript->initialized && pscript->pinterpreter->pClearEntry)
     {
+        PROF_T0(_p_ce);
         temp = pcurrentscript;
         pcurrentscript = pscript;
 
@@ -533,10 +539,12 @@ void Script_Clear(Script *pscript, int localclear)
         ScriptVariant_Clear(&tempvar);
         Script_Set_Local_Variant(pscript, "localclear", &tempvar);
         pcurrentscript = temp;
+        prof_acc_add(&prof_sc_clearentry, _p_ce, 0);
     }
 
     if(localclear && pscript->varlist)
     {
+        PROF_T0(_p_vl);
         if(localclear == 2)
         {
             Varlist_Clear(pscript->varlist);
@@ -547,6 +555,7 @@ void Script_Clear(Script *pscript, int localclear)
         {
             Varlist_Cleanup(pscript->varlist);
         }
+        prof_acc_add(&prof_sc_varlist, _p_vl, 0);
     }
     if(!pscript->initialized)
     {
@@ -556,8 +565,10 @@ void Script_Clear(Script *pscript, int localclear)
     //if it is the owner, free the interpreter
     if(pscript->pinterpreter && pscript->interpreterowner)
     {
+        PROF_T0(_p_in);
         Interpreter_Clear(pscript->pinterpreter);
         free(pscript->pinterpreter);
+        prof_acc_add(&prof_sc_interp, _p_in, 0);
         pscript->pinterpreter = NULL;
         if(pscript->comment)
         {
@@ -613,7 +624,23 @@ int Script_MapStringConstants(Instruction *pInstruction)
 }
 
 //should be called only once after parsing text
+prof_acc prof_script_compile = { "prof_script_compile", 0, 0, 0 };
+prof_acc prof_compile_instr  = { "prof_compile_instr",  0, 0, 0 };
+prof_acc prof_script_init    = { "prof_script_init",    0, 0, 0 };
+prof_acc prof_script_append  = { "prof_script_append",  0, 0, 0 };
+
+static int Script_Compile_impl(Script *pscript);
+
 int Script_Compile(Script *pscript)
+{
+    int _p_r;
+    PROF_T0(_p_t);
+    _p_r = Script_Compile_impl(pscript);
+    prof_acc_add(&prof_script_compile, _p_t, 0);
+    return _p_r;
+}
+
+static int Script_Compile_impl(Script *pscript)
 {
     int result;
     if(!pscript || !pscript->pinterpreter)
@@ -621,14 +648,22 @@ int Script_Compile(Script *pscript)
         return 1;
     }
     //Interpreter_OutputPCode(pscript->pinterpreter, "code");
-    result = SUCCEEDED(Interpreter_CompileInstructions(pscript->pinterpreter));
+    {
+        PROF_T0(_p_ci);
+        result = SUCCEEDED(Interpreter_CompileInstructions(pscript->pinterpreter));
+        prof_acc_add(&prof_compile_instr, _p_ci, 0);
+    }
     if(!result)
     {
         borShutdown(1, "Can't compile script '%s' %s\n", pscript->pinterpreter->theSymbolTable.name, pscript->comment ? pscript->comment : "");
     }
 
     pscript->pinterpreter->bReset = FALSE;
-    execute_init_method(pscript, 0, 1);
+    {
+        PROF_T0(_p_ini);
+        execute_init_method(pscript, 0, 1);
+        prof_acc_add(&prof_script_init, _p_ini, 0);
+    }
     return result;
 }
 

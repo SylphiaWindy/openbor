@@ -72,7 +72,30 @@ extern unsigned long start;
 /////////////////////////////////////////////////////////////////////////////
 //  Functions
 
+#include "prof.h"
+
+/*
+ * Everywhere but Windows/macOS/Linux this ends up in mallinfo(), which walks
+ * the whole allocator arena. The engine calls it for a debug line at the top
+ * and bottom of load_level and twice more in unload_level -- and getRamStatus
+ * and getUsedRam each call it again underneath -- so a level change pays for
+ * around nine full heap walks. On a mod with this many live allocations that
+ * is worth measuring before anything else.
+ */
+prof_acc prof_getfreeram = { "prof_getfreeram", 0, 0, 0 };
+
+static u64 getFreeRam_impl(int byte_size);
+
 u64 getFreeRam(int byte_size)
+{
+    u64 _p_r;
+    PROF_T0(_p_t);
+    _p_r = getFreeRam_impl(byte_size);
+    prof_acc_add(&prof_getfreeram, _p_t, 0);
+    return _p_r;
+}
+
+static u64 getFreeRam_impl(int byte_size)
 {
 #if WIN
     MEMORYSTATUSEX stat;

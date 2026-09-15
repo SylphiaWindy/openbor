@@ -6,6 +6,9 @@
  * Copyright (c) 2004 - 2014 OpenBOR Team
  */
 
+/* before the engine headers: safealloc.h macro-wraps malloc/free */
+#include <malloc.h>
+
 #include "sdlport.h"
 #include "packfile.h"
 #include "ram.h"
@@ -118,6 +121,31 @@ int main(int argc, char *argv[])
 
 	PROF_T0(_p_boot);
 	prof_log("main: entered");
+
+#ifdef __SWITCH__
+	/*
+	 * Keep freed memory in the process instead of handing it back.
+	 *
+	 * dlmalloc trims the top of the heap once the free space there passes
+	 * M_TRIM_THRESHOLD (128 KB by default), which on Switch means an
+	 * svcSetHeapSize. Tearing down a level frees ~700k script instructions,
+	 * and the frees that land near the top were measured at 12 us each
+	 * against 0.19 us for the ones that do not -- a syscall apiece.
+	 *
+	 * The engine's peak footprint is the same either way; this only stops
+	 * the heap oscillating while a level is being built up or torn down.
+	 */
+	/*
+	 * Measured and reverted: raising the trim threshold changed nothing
+	 * (13.6 s of teardown became 12.4 s, inside run-to-run variance), so the
+	 * frees were never paying for svcSetHeapSize. All it did was stop the
+	 * arena ever shrinking, and the arena is what the options screen reports
+	 * as used memory. The cost was in the allocator's own bookkeeping, which
+	 * the instruction pool now sidesteps.
+	 */
+	prof_log("main: entered (no mallopt; see comment)");
+#endif
+
 	setSystemRam();
 	initSDL();
 	prof_log("main: initSDL done, %.3f ms", PROF_SINCE(_p_boot));
