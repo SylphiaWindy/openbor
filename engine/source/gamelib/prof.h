@@ -89,6 +89,7 @@ extern prof_acc prof_ins_pool;        /* calls = high water, bytes = its size */
 void prof_script_text_report(void);
 void prof_script_alloc_report(void);
 void sprite_cache_init(void);        /* openbor.c */
+void bor_alloc_site_report(int top); /* which lines allocate */
 
 extern double      prof_phase[PROF_PH_COUNT];
 extern const char *prof_phase_name[PROF_PH_COUNT];

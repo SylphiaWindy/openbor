@@ -220,3 +220,134 @@ uint64_t bor_alloc_count = 0;
 uint64_t bor_alloc_bytes = 0;
 uint64_t bor_alloc_us    = 0;
 #endif
+
+#ifdef BOR_PROF
+/*
+ * Which lines allocate.
+ *
+ * The allocator is ~2 s of a level load on the Switch (697 ns a call there
+ * against 21 ns on a desktop), so pooling is worth it -- but only for the
+ * sites that dominate, and those are not obvious from the object counts.
+ * safeMalloc already knows its caller; keep a table keyed by it.
+ */
+#define BOR_SITE_SLOTS 65536
+
+typedef struct
+{
+    const char *file;
+    int         line;
+    uint64_t    calls;
+    uint64_t    bytes;
+    uint64_t    us;
+} bor_site;
+
+static bor_site bor_sites[BOR_SITE_SLOTS];
+static uint64_t bor_site_dropped;
+
+void bor_alloc_site(const char *file, int line, uint64_t bytes, uint64_t us)
+{
+    /* String literals, so the pointer identifies the file. */
+    size_t h = (((size_t)file >> 4) ^ (size_t)(line * 2654435761u)) & (BOR_SITE_SLOTS - 1);
+    size_t i;
+
+    for(i = 0; i < 64; i++)         /* bounded probe; the table is sparse */
+    {
+        bor_site *s = &bor_sites[(h + i) & (BOR_SITE_SLOTS - 1)];
+        if(!s->file || (s->file == file && s->line == line))
+        {
+            s->file = file;
+            s->line = line;
+            s->calls++;
+            s->bytes += bytes;
+            s->us += us;
+            return;
+        }
+    }
+    bor_site_dropped++;
+}
+
+/* Per line is too fine: scriptlib spreads its allocations over hundreds of
+   them, so the worst lines are all model loading and the parser never shows.
+   Summarise by file first, then list the worst individual lines. */
+static void bor_alloc_file_report(void)
+{
+    struct { const char *file; uint64_t calls, us; } agg[64];
+    int n = 0, i, j, r;
+    char used[64];
+    uint64_t table_total = 0;
+    int distinct = 0;
+
+    /* Cross-check: this must agree with the engine-wide counter, or the table
+       is losing rows and the ranking below cannot be trusted. */
+    for(i = 0; i < BOR_SITE_SLOTS; i++)
+        if(bor_sites[i].file) { table_total += bor_sites[i].calls; distinct++; }
+    prof_log("      [table holds %llu calls over %d sites]",
+             (unsigned long long)table_total, distinct);
+
+    memset(agg, 0, sizeof(agg));
+    for(i = 0; i < BOR_SITE_SLOTS; i++)
+    {
+        if(!bor_sites[i].file) continue;
+        for(j = 0; j < n; j++) if(agg[j].file == bor_sites[i].file) break;
+        if(j == n)
+        {
+            if(n >= 64) continue;
+            agg[n].file = bor_sites[i].file; n++;
+        }
+        agg[j].calls += bor_sites[i].calls;
+        agg[j].us    += bor_sites[i].us;
+    }
+
+    memset(used, 0, sizeof(used));
+    for(r = 0; r < 8; r++)
+    {
+        int best = -1;
+        for(i = 0; i < n; i++)
+            if(!used[i] && (best < 0 || agg[i].calls > agg[best].calls)) best = i;
+        if(best < 0 || !agg[best].calls) break;
+        used[best] = 1;
+        {
+            const char *f = strrchr(agg[best].file, '/');
+            prof_log("      %-26s %9llu x %8.3f ms",
+                     f ? f + 1 : agg[best].file,
+                     (unsigned long long)agg[best].calls,
+                     (double)agg[best].us / 1000.0);
+        }
+    }
+}
+
+void bor_alloc_site_report(int top)
+{
+    bor_alloc_file_report();
+    int r;
+    char seen[BOR_SITE_SLOTS];
+    size_t i;
+
+    memset(seen, 0, sizeof(seen));
+    for(r = 0; r < top; r++)
+    {
+        size_t best = BOR_SITE_SLOTS;
+        for(i = 0; i < BOR_SITE_SLOTS; i++)
+            if(!seen[i] && bor_sites[i].file &&
+               (best == BOR_SITE_SLOTS || bor_sites[i].calls > bor_sites[best].calls))
+                best = i;
+        if(best == BOR_SITE_SLOTS) break;
+        seen[best] = 1;
+        {
+            const char *f = strrchr(bor_sites[best].file, '/');
+            prof_log("      %-22s:%-5d %9llu x %8.3f ms %8llu KB",
+                     f ? f + 1 : bor_sites[best].file, bor_sites[best].line,
+                     (unsigned long long)bor_sites[best].calls,
+                     (double)bor_sites[best].us / 1000.0,
+                     (unsigned long long)(bor_sites[best].bytes / 1024));
+        }
+    }
+    if(bor_site_dropped)
+    {
+        prof_log("      (%llu allocations not attributed -- table full)",
+                 (unsigned long long)bor_site_dropped);
+    }
+    memset(bor_sites, 0, sizeof(bor_sites));
+    bor_site_dropped = 0;
+}
+#endif

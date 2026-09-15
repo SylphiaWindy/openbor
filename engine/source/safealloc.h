@@ -31,10 +31,15 @@ extern uint64_t bor_alloc_count;
 extern uint64_t bor_alloc_bytes;
 extern uint64_t bor_alloc_us;
 uint64_t prof_us(void);
+/* Charge an allocation to the line that asked for it, so the sites worth
+   pooling can be read off instead of guessed at. */
+void bor_alloc_site(const char *file, int line, uint64_t bytes, uint64_t us);
 #define BOR_ALLOC_NOTE(sz, expr)                        \
     ({ uint64_t _t0 = prof_us(); void *_p = (expr);     \
-       bor_alloc_us += prof_us() - _t0;                 \
-       bor_alloc_count++; bor_alloc_bytes += (uint64_t)(sz); _p; })
+       uint64_t _d = prof_us() - _t0;                   \
+       bor_alloc_us += _d;                              \
+       bor_alloc_count++; bor_alloc_bytes += (uint64_t)(sz); \
+       bor_alloc_site(file, line, (uint64_t)(sz), _d); _p; })
 #else
 #define BOR_ALLOC_NOTE(sz, expr) (expr)
 #endif

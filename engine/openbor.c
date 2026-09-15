@@ -13776,6 +13776,9 @@ int load_models()
 #ifdef BOR_PROF
     prof_script_text_report();
     prof_script_alloc_report();
+#ifdef BOR_PROF
+    bor_alloc_site_report(10);
+#endif
 #endif
 #ifdef BOR_PROF
     prof_model_cmd_report(12);
@@ -17131,6 +17134,9 @@ lCleanup:
 #ifdef BOR_PROF
     prof_script_text_report();
     prof_script_alloc_report();
+#ifdef BOR_PROF
+    bor_alloc_site_report(10);
+#endif
 #endif
 #ifdef BOR_PROF
     prof_model_cmd_report(12);
