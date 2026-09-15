@@ -49,6 +49,41 @@ void     prof_log(const char *fmt, ...);
 void     prof_flush(const char *reason);
 void     prof_acc_add(prof_acc *a, uint64_t t0, uint64_t bytes);
 void     prof_acc_report(prof_acc *a, int reset);
+void     prof_acc_reset(prof_acc *a);
+
+/* Defined in ramlib/ram.c so the engine can report it from anywhere. */
+extern prof_acc prof_getfreeram;
+
+/* Defined in utils.c: every printf() in the engine is writeToLogFile(). */
+extern prof_acc prof_writelog;
+
+/* Defined in openborscript.c: the three halves of Script_Clear(). */
+extern prof_acc prof_sc_clearentry;
+extern prof_acc prof_sc_varlist;
+extern prof_acc prof_sc_interp;
+
+/* Defined in scriptlib/Interpreter.c: the stages of Interpreter_Clear(). */
+extern prof_acc prof_ic_ppctx;
+extern prof_acc prof_ic_symtab;
+extern prof_acc prof_ic_parser;
+extern prof_acc prof_ic_instr;
+extern prof_acc prof_ic_lists;
+
+/* Defined in scriptlib/Instruction.c: what Instruction_Clear() does. */
+extern prof_acc prof_in_val;
+extern prof_acc prof_in_reflist;
+extern prof_acc prof_in_label;
+extern prof_acc prof_in_token;
+extern prof_acc prof_in_free;
+extern prof_acc prof_in_free_slow;   /* the >100us tail of prof_in_free */
+extern prof_acc prof_in_free_max;    /* us holds the single worst free */
+
+/* Defined in openborscript.c */
+extern prof_acc prof_script_compile;
+extern prof_acc prof_script_append;
+extern prof_acc prof_compile_instr;   /* Interpreter_CompileInstructions */
+extern prof_acc prof_script_init;     /* the script's own init() */
+extern prof_acc prof_ins_pool;        /* calls = high water, bytes = its size */
 
 extern double      prof_phase[PROF_PH_COUNT];
 extern const char *prof_phase_name[PROF_PH_COUNT];
@@ -76,6 +111,7 @@ void prof_mark_report(double threshold_ms);
 #define prof_flush(reason)          ((void)0)
 #define prof_acc_add(a, t0, bytes)  ((void)0)
 #define prof_acc_report(a, reset)   ((void)0)
+#define prof_acc_reset(a)           ((void)0)
 
 #define prof_phase_reset()          ((void)0)
 #define prof_phase_report()          ((void)0)

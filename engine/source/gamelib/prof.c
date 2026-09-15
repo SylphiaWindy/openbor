@@ -188,6 +188,13 @@ void prof_acc_add(prof_acc *a, uint64_t t0, uint64_t bytes)
     a->bytes += bytes;
 }
 
+void prof_acc_reset(prof_acc *a)
+{
+    a->us = 0;
+    a->calls = 0;
+    a->bytes = 0;
+}
+
 void prof_acc_report(prof_acc *a, int reset)
 {
     prof_log("    %-26s %8llu calls  %10.3f ms  %llu bytes",
