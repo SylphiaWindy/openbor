@@ -24,6 +24,7 @@ PROF_ACC(prof_mc_lookup);           // arg 0 -> model command id
 PROF_ACC(prof_mc_nextline);         // advancing to the next line
 PROF_ACC(prof_loadsprite_scan);     // the linear sweep inside loadsprite()
 PROF_ACC(prof_ls_decode);           // loadbitmap: pull the gif and decode it
+PROF_ACC(prof_ls_redecode);         // ...of a file this session already decoded
 PROF_ACC(prof_ls_encode);           // clip + encode into the sprite format
 PROF_ACC(prof_ls_palette);          // loadimagepalette for a model's first frame
 PROF_ACC(prof_frame_peek);          // the look-ahead that counts an anim's frames
@@ -4651,8 +4652,31 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
 
     {
         PROF_T0(_p_lb);
+#ifdef BOR_PROF
+        /*
+         * unload_level frees a model's sprites, so a file needed again by a
+         * later level is decoded from scratch again.  Count how often that
+         * happens: re-decoding is pure waste that a sprite cache would remove
+         * without the risks of decoding lazily.
+         */
+        static uint64_t seen[8192];
+        uint64_t h = 1469598103934665603ULL;
+        const char *c;
+        int probe, again = 0;
+        for(c = filename; *c; c++) { h ^= (unsigned char)*c; h *= 1099511628211ULL; }
+        if(!h) h = 1;
+        for(probe = 0; probe < 8192; probe++)
+        {
+            uint64_t *slot = &seen[(h + probe) & 8191];
+            if(*slot == h) { again = 1; break; }
+            if(!*slot) { *slot = h; break; }
+        }
+#endif
         bitmap = loadbitmap(filename, packfile, bmpformat);
         prof_acc_add(&prof_ls_decode, _p_lb, 0);
+#ifdef BOR_PROF
+        if(again) prof_acc_add(&prof_ls_redecode, _p_lb, 0);
+#endif
     }
     if(bitmap == NULL)
     {
@@ -4664,6 +4688,11 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
 
     len = strlen(filename);
     size = fakey_encodesprite(bitmap);
+#ifdef BOR_PROF
+    /* What a decoded sprite actually costs, after clipping and encoding --
+       the number a cache budget would have to be measured against. */
+    prof_ls_decode.bytes += (uint64_t)size;
+#endif
     curr = malloc(sizeof(*curr));
     curr->sprite = malloc(size);
     curr->filename = malloc(len + 1);
@@ -13543,9 +13572,14 @@ int load_models()
     prof_acc_report(&prof_mc_nextline, 1);
     prof_acc_report(&prof_loadsprite_scan, 1);
     prof_acc_report(&prof_ls_decode, 1);
+    prof_acc_report(&prof_ls_redecode, 1);
     prof_acc_report(&prof_ls_encode, 1);
     prof_acc_report(&prof_ls_palette, 1);
     prof_acc_report(&prof_frame_peek, 1);
+#ifdef BOR_PROF
+    prof_script_text_report();
+    prof_script_alloc_report();
+#endif
 #ifdef BOR_PROF
     prof_model_cmd_report(12);
     prof_model_cmd_reset();
@@ -16892,9 +16926,14 @@ lCleanup:
     prof_acc_report(&prof_mc_nextline, 1);
     prof_acc_report(&prof_loadsprite_scan, 1);
     prof_acc_report(&prof_ls_decode, 1);
+    prof_acc_report(&prof_ls_redecode, 1);
     prof_acc_report(&prof_ls_encode, 1);
     prof_acc_report(&prof_ls_palette, 1);
     prof_acc_report(&prof_frame_peek, 1);
+#ifdef BOR_PROF
+    prof_script_text_report();
+    prof_script_alloc_report();
+#endif
 #ifdef BOR_PROF
     prof_model_cmd_report(12);
     prof_model_cmd_reset();

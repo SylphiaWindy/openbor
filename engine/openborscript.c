@@ -581,6 +581,73 @@ void Script_Clear(Script *pscript, int localclear)
     pscript->varlist = pvars; // copy it back
 }
 
+#ifdef BOR_PROF
+/*
+ * How much of the script text handed to the parser is text we have already
+ * parsed once.
+ *
+ * Parsing and compiling are ~142 ms of a level load, and the engine already
+ * has the machinery to share a compiled program -- Script_Copy hands over the
+ * interpreter and marks the copy as not owning it.  What decides whether an
+ * intern cache is worth building is the hit rate on the real workload, so
+ * count distinct source texts before writing any of it.
+ */
+#define PROF_TXT_SLOTS 4096
+static uint64_t prof_txt_seen[PROF_TXT_SLOTS];
+static unsigned prof_txt_total, prof_txt_distinct;
+static uint64_t prof_txt_bytes, prof_txt_bytes_distinct;
+
+static void prof_note_script_text(const char *text)
+{
+    uint64_t h = 1469598103934665603ULL;
+    size_t n = 0, i;
+
+    for(; text[n]; n++)
+    {
+        h ^= (unsigned char)text[n];
+        h *= 1099511628211ULL;
+    }
+    if(!h) h = 1;
+
+    prof_txt_total++;
+    prof_txt_bytes += n;
+
+    for(i = 0; i < PROF_TXT_SLOTS; i++)
+    {
+        uint64_t *slot = &prof_txt_seen[(h + i) & (PROF_TXT_SLOTS - 1)];
+        if(*slot == h) return;              /* seen it */
+        if(!*slot) { *slot = h; break; }    /* new */
+    }
+    prof_txt_distinct++;
+    prof_txt_bytes_distinct += n;
+}
+
+/* Allocator activity charged to parsing and to compiling, separately. */
+static uint64_t prof_ap_n, prof_ap_us, prof_cp_n, prof_cp_us;
+
+void prof_script_alloc_report(void)
+{
+    prof_log("    allocations (engine-wide wrapper): %llu, %.3f ms",
+             (unsigned long long)bor_alloc_count, (double)bor_alloc_us / 1000.0);
+    prof_log("    allocations while parsing:   %8llu in %8.3f ms",
+             (unsigned long long)prof_ap_n, (double)prof_ap_us / 1000.0);
+    prof_log("    allocations while compiling: %8llu in %8.3f ms",
+             (unsigned long long)prof_cp_n, (double)prof_cp_us / 1000.0);
+    prof_ap_n = prof_ap_us = prof_cp_n = prof_cp_us = 0;
+}
+
+void prof_script_text_report(void)
+{
+    if(!prof_txt_total) return;
+    prof_log("    script text: %u parsed, %u distinct (%.1f%% repeat), "
+             "%llu KB -> %llu KB",
+             prof_txt_total, prof_txt_distinct,
+             100.0 * (prof_txt_total - prof_txt_distinct) / prof_txt_total,
+             (unsigned long long)(prof_txt_bytes / 1024),
+             (unsigned long long)(prof_txt_bytes_distinct / 1024));
+}
+#endif
+
 //append part of the script
 //Because the script might not be initialized in 1 time.
 int Script_AppendText(Script *pscript, char *text, char *path)
@@ -588,10 +655,18 @@ int Script_AppendText(Script *pscript, char *text, char *path)
     int success;
 
     //printf(text);
+#ifdef BOR_PROF
+    uint64_t _a0 = bor_alloc_count, _u0 = bor_alloc_us;
+    prof_note_script_text(text);
+#endif
     Interpreter_Reset(pscript->pinterpreter);
 
     success = SUCCEEDED(Interpreter_ParseText(pscript->pinterpreter, text, 1, path));
 
+#ifdef BOR_PROF
+    prof_ap_n  += bor_alloc_count - _a0;
+    prof_ap_us += bor_alloc_us - _u0;
+#endif
     return success;
 }
 
@@ -650,7 +725,14 @@ static int Script_Compile_impl(Script *pscript)
     //Interpreter_OutputPCode(pscript->pinterpreter, "code");
     {
         PROF_T0(_p_ci);
+#ifdef BOR_PROF
+        uint64_t _a0 = bor_alloc_count, _u0 = bor_alloc_us;
+#endif
         result = SUCCEEDED(Interpreter_CompileInstructions(pscript->pinterpreter));
+#ifdef BOR_PROF
+        prof_cp_n  += bor_alloc_count - _a0;
+        prof_cp_us += bor_alloc_us - _u0;
+#endif
         prof_acc_add(&prof_compile_instr, _p_ci, 0);
     }
     if(!result)

@@ -213,3 +213,10 @@ void prof_acc_report(prof_acc *a, int reset)
 #else
 typedef int prof_translation_unit_not_empty;
 #endif
+
+#ifdef BOR_PROF
+/* Allocation counters; see safealloc.h. */
+uint64_t bor_alloc_count = 0;
+uint64_t bor_alloc_bytes = 0;
+uint64_t bor_alloc_us    = 0;
+#endif
