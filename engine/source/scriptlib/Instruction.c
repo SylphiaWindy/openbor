@@ -6,6 +6,7 @@
  * Copyright (c) 2004 - 2013 OpenBOR Team
  */
 
+#include "prof.h"
 #include "Instruction.h"
 #include <stdlib.h>
 #include <string.h>
@@ -45,25 +46,116 @@ void Instruction_Init(Instruction *pins)
     pins->theToken->theType = END_OF_TOKENS;
 }
 
+prof_acc prof_in_val     = { "prof_in_val",     0, 0, 0 };
+prof_acc prof_in_reflist = { "prof_in_reflist", 0, 0, 0 };
+prof_acc prof_in_label   = { "prof_in_label",   0, 0, 0 };
+prof_acc prof_in_token   = { "prof_in_token",   0, 0, 0 };
+/*
+ * Instruction objects are all the same size, and the engine destroys and
+ * recreates hundreds of thousands of them every time a level changes. Handing
+ * them back to the allocator measured at 10.6 us each -- 2% of the frees took
+ * 380 us, the allocator degrading as its free chunks multiplied -- against
+ * 0.18 us for a small free early on.
+ *
+ * Keep them in a pool instead. Memory is bounded by the high-water mark of
+ * live instructions, which the program already pays for; nothing is held that
+ * was not held a moment earlier.
+ */
+static Instruction **ins_pool = NULL;
+static size_t ins_pool_count = 0;
+static size_t ins_pool_cap = 0;
+static size_t ins_pool_high = 0;
+
+prof_acc prof_ins_pool = { "prof_ins_pool", 0, 0, 0 };
+
+/* calls = most instructions ever pooled at once, bytes = what that costs */
+void Instruction_PoolStats(void)
+{
+    prof_ins_pool.calls = (uint64_t)ins_pool_high;
+    prof_ins_pool.bytes = (uint64_t)ins_pool_high * sizeof(Instruction);
+}
+
+Instruction *Instruction_Alloc(void)
+{
+    Instruction *pins;
+
+    if(ins_pool_count)
+    {
+        pins = ins_pool[--ins_pool_count];
+        memset(pins, 0, sizeof(Instruction));
+        return pins;
+    }
+    return (Instruction *)malloc(sizeof(Instruction));
+}
+
+void Instruction_Recycle(Instruction *pins)
+{
+    if(!pins)
+    {
+        return;
+    }
+    if(ins_pool_count == ins_pool_cap)
+    {
+        size_t ncap = ins_pool_cap ? ins_pool_cap * 2 : 8192;
+        Instruction **grown = (Instruction **)realloc(ins_pool, ncap * sizeof(Instruction *));
+        if(!grown)
+        {
+            free(pins);   /* pool cannot grow: fall back to the allocator */
+            return;
+        }
+        ins_pool = grown;
+        ins_pool_cap = ncap;
+    }
+    ins_pool[ins_pool_count++] = pins;
+    if(ins_pool_count > ins_pool_high)
+    {
+        ins_pool_high = ins_pool_count;
+    }
+}
+
+/* Only for shutdown; the pool is meant to stay warm while the game runs. */
+void Instruction_DrainPool(void)
+{
+    while(ins_pool_count)
+    {
+        free(ins_pool[--ins_pool_count]);
+    }
+    free(ins_pool);
+    ins_pool = NULL;
+    ins_pool_cap = 0;
+}
+
+prof_acc prof_in_free      = { "prof_in_free",      0, 0, 0 };
+prof_acc prof_in_free_slow = { "prof_in_free_slow", 0, 0, 0 };
+prof_acc prof_in_free_max  = { "prof_in_free_max",  0, 0, 0 };
+
 void Instruction_Clear(Instruction *pins)
 {
     if(pins->theVal)
     {
+        PROF_T0(_p_t);
         ScriptVariant_Clear(pins->theVal);
         free((void *)pins->theVal);
+        prof_acc_add(&prof_in_val, _p_t, 0);
     }
     if(pins->theRefList)
     {
+        PROF_T0(_p_t);
         List_Clear(pins->theRefList);
         free(pins->theRefList);
+        prof_acc_add(&prof_in_reflist, _p_t, 0);
     }
     if(pins->Label)
     {
+        PROF_T0(_p_t);
         free(pins->Label);
+        prof_acc_add(&prof_in_label, _p_t, 0);
     }
     if(pins->theToken)
     {
+        PROF_T0(_p_t);
         free(pins->theToken);
+        prof_acc_add(&prof_in_token, _p_t, 0);
     }
     memset(pins, 0, sizeof(Instruction));
 }

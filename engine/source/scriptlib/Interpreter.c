@@ -6,6 +6,7 @@
  * Copyright (c) 2004 - 2013 OpenBOR Team
  */
 
+#include "prof.h"
 #include "../openborscript/config.h"
 #include "Interpreter.h"
 #include "ImportCache.h"
@@ -27,23 +28,61 @@ void Interpreter_Init(Interpreter *pinterpreter, LPCSTR name, List *pflist)
     pp_context_init(&(pinterpreter->theContext));
 }
 
+prof_acc prof_ic_ppctx  = { "prof_ic_ppctx",  0, 0, 0 };
+prof_acc prof_ic_symtab = { "prof_ic_symtab", 0, 0, 0 };
+prof_acc prof_ic_parser = { "prof_ic_parser", 0, 0, 0 };
+prof_acc prof_ic_instr  = { "prof_ic_instr",  0, 0, 0 };
+prof_acc prof_ic_lists  = { "prof_ic_lists",  0, 0, 0 };
+
 void Interpreter_Clear(Interpreter *pinterpreter)
 {
     int i, size;
     Instruction *pinstruction = NULL;
     ScriptVariant *pvariant = NULL;
+    uint64_t _p_n = 0;
+    PROF_T0(_p_t);
 
     pp_context_destroy(&(pinterpreter->theContext));
+    prof_acc_add(&prof_ic_ppctx, _p_t, 0);
 
+    _p_t = prof_us();
     StackedSymbolTable_Clear(&(pinterpreter->theSymbolTable));
+    prof_acc_add(&prof_ic_symtab, _p_t, 0);
+
+    _p_t = prof_us();
     Parser_Clear(&(pinterpreter->theParser));
+    prof_acc_add(&prof_ic_parser, _p_t, 0);
+
+    _p_t = prof_us();
     if(pinterpreter->theInstructionList.solidlist)
     {
         size = pinterpreter->theInstructionList.size;
         for(i = 0; i < size; i++)
         {
             Instruction_Clear(pinterpreter->theInstructionList.solidlist[i]);
-            free((void *)pinterpreter->theInstructionList.solidlist[i]);
+            {
+#ifdef BOR_PROF
+                uint64_t _p_f = prof_us();
+                uint64_t _p_dt;
+                Instruction_Recycle(pinterpreter->theInstructionList.solidlist[i]);
+                _p_dt = prof_us() - _p_f;
+                prof_in_free.us += _p_dt;
+                prof_in_free.calls++;
+                /* split the tail out: a handful of very slow frees and a lot of
+                   uniformly slow ones mean different things */
+                if(_p_dt > 100)
+                {
+                    prof_in_free_slow.us += _p_dt;
+                    prof_in_free_slow.calls++;
+                }
+                if(_p_dt > prof_in_free_max.us)
+                {
+                    prof_in_free_max.us = _p_dt;
+                }
+#else
+                Instruction_Recycle(pinterpreter->theInstructionList.solidlist[i]);
+#endif
+            }
             pinterpreter->theInstructionList.solidlist[i] = NULL;
         }
     }
@@ -53,10 +92,14 @@ void Interpreter_Clear(Interpreter *pinterpreter)
             pinterpreter->theInstructionList,
             pinstruction = (Instruction *)List_Retrieve(&(pinterpreter->theInstructionList));
             Instruction_Clear(pinstruction);
-            free((void *)pinstruction);
+            Instruction_Recycle(pinstruction);
             pinstruction = NULL;
         );
     }
+    _p_n = (uint64_t)pinterpreter->theInstructionList.size;
+    prof_acc_add(&prof_ic_instr, _p_t, _p_n);
+
+    _p_t = prof_us();
     while(!Stack_IsEmpty(&(pinterpreter->theDataStack)))
     {
         pvariant = (ScriptVariant *)Stack_Top(&(pinterpreter->theDataStack));
@@ -67,6 +110,7 @@ void Interpreter_Clear(Interpreter *pinterpreter)
     List_Clear(&(pinterpreter->theLabelStack));
     List_Clear(&(pinterpreter->theInstructionList));
     List_Clear(&(pinterpreter->paramList));
+    prof_acc_add(&prof_ic_lists, _p_t, 0);
     memset(pinterpreter, 0, sizeof(Interpreter));
 }
 
