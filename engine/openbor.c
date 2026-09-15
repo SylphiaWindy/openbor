@@ -4300,8 +4300,136 @@ void resourceCleanUp()
     load_models();
 }
 
+/*
+ * Index from filename to the sprite_map entries that use it.
+ *
+ * loadsprite() looked for a filename by walking every entry loaded so far.
+ * On a Switch, loading one level ran 16 million stricmp calls -- 1238 per
+ * lookup, because the map keeps growing as a session goes on.  Measured at
+ * about two seconds there.
+ *
+ * Bucket by a case-insensitive hash of the filename (stricmp still decides a
+ * match, so the hash only has to agree with it on equality) and chain entries
+ * that share a name through an array parallel to sprite_map, which leaves the
+ * map's own layout alone.
+ */
+#define SPR_NAME_BUCKETS 4096
+
+static int *spr_name_next;              /* parallel to sprite_map */
+static int  spr_name_bucket[SPR_NAME_BUCKETS];
+static int  spr_name_ready;
+
+static unsigned spr_name_hash(const char *s)
+{
+    unsigned h = 2166136261u;
+    for(; *s; s++)
+    {
+        unsigned char c = (unsigned char)*s;
+        if(c >= 'A' && c <= 'Z') c += 32;
+        if(c == '\\') c = '/';         /* the pak mixes separators */
+        h = (h ^ c) * 16777619u;
+    }
+    return h & (SPR_NAME_BUCKETS - 1);
+}
+
+static void spr_name_reset(void)
+{
+    int i;
+    for(i = 0; i < SPR_NAME_BUCKETS; i++) spr_name_bucket[i] = -1;
+    spr_name_ready = 1;
+}
+
+static void spr_name_add(int index)
+{
+    unsigned h;
+    if(!spr_name_ready) spr_name_reset();
+    if(!spr_name_next) return;
+    h = spr_name_hash(sprite_map[index].node->filename);
+    spr_name_next[index] = spr_name_bucket[h];
+    spr_name_bucket[h] = index;
+}
+
+/*
+ * Sprite cache.
+ *
+ * Unloading a level frees every sprite its models used, so the next level
+ * decodes from scratch -- and consecutive levels of one theme share most of
+ * their sprites, with only a select screen in between.  Decoding is the
+ * largest single part of a level load.
+ *
+ * Rather than decode lazily -- which would move the stall into gameplay --
+ * keep sprites past the unload that would have freed them, under a byte
+ * budget, and drop the least recently used when it is exceeded.  A level's
+ * sprites encode to about 2 MB; 8 MB covers most of the reuse and 16 MB is
+ * already saturated.
+ *
+ * Nothing about object lifetime changes: this only delays a free that already
+ * happens, and reuse goes through the reload path the engine has always had.
+ * The one hazard is that CMD_MODEL_FRAME can point a sprite's palette at its
+ * model and its mask at another sprite; both are detached on the way in, so a
+ * cached sprite is always self-contained.
+ */
+#ifndef SPRITE_CACHE_DEFAULT_MB
+#define SPRITE_CACHE_DEFAULT_MB 16
+#endif
+
+static unsigned long sprite_cache_budget = SPRITE_CACHE_DEFAULT_MB * 1024UL * 1024UL;
+static s_sprite_list *spr_lru_head, *spr_lru_tail;
+static unsigned long spr_lru_bytes;
+
+static void spr_lru_unlink(s_sprite_list *n)
+{
+    if(!n->cached) return;
+    if(n->lru_prev) n->lru_prev->lru_next = n->lru_next;
+    else            spr_lru_head = n->lru_next;
+    if(n->lru_next) n->lru_next->lru_prev = n->lru_prev;
+    else            spr_lru_tail = n->lru_prev;
+    n->lru_prev = n->lru_next = NULL;
+    n->cached = 0;
+    spr_lru_bytes -= n->bytes;
+}
+
+static void spr_lru_trim(void)
+{
+    while(spr_lru_bytes > sprite_cache_budget && spr_lru_tail)
+    {
+        s_sprite_list *victim = spr_lru_tail;
+        spr_lru_unlink(victim);
+        free(victim->sprite);
+        victim->sprite = NULL;
+    }
+}
+
+/* Take the sprite out of use but keep it decoded. */
+static void spr_cache_put(s_sprite_list *n)
+{
+    s_sprite *sp = n->sprite;
+    unsigned char *base = (unsigned char *)sp;
+
+    /* Detach anything owned elsewhere, so the cached sprite cannot outlive
+       what it points at.  encodesprite() leaves palette either NULL or inside
+       the sprite's own allocation; anything else came from a model. */
+    sp->mask = NULL;
+    if(sp->palette && !(sp->palette >= base && sp->palette < base + (size_t)n->bytes))
+    {
+        sp->palette = NULL;
+    }
+
+    n->cached = 1;
+    n->lru_prev = NULL;
+    n->lru_next = spr_lru_head;
+    if(spr_lru_head) spr_lru_head->lru_prev = n;
+    spr_lru_head = n;
+    if(!spr_lru_tail) spr_lru_tail = n;
+    spr_lru_bytes += n->bytes;
+    spr_lru_trim();
+}
+
 void freesprites()
 {
+    spr_lru_head = spr_lru_tail = NULL;
+    spr_lru_bytes = 0;
+    spr_name_reset();
     unsigned i;
     s_sprite_list *head;
     for(i = 0; i <= sprites_loaded; i++)
@@ -4322,6 +4450,11 @@ void freesprites()
         free(sprite_map);
         sprite_map = NULL;
     }
+    if(spr_name_next != NULL)
+    {
+        free(spr_name_next);
+        spr_name_next = NULL;
+    }
     sprites_loaded = 0;
 }
 
@@ -4338,6 +4471,11 @@ void prepare_sprite_map(size_t size)
         if(sprite_map == NULL)
         {
             borShutdown(1, "Out Of Memory!  Failed to create a new sprite_map\n");
+        }
+        spr_name_next = realloc(spr_name_next, sizeof(*spr_name_next) * sprite_map_max_items);
+        if(spr_name_next == NULL)
+        {
+            borShutdown(1, "Out Of Memory!  Failed to grow the sprite name index\n");
         }
     }
 }
@@ -4397,7 +4535,12 @@ void cachesprite(int index, int load)
                     // a sprite with our target index.
                     sprite = map_node->sprite;
 
-                    if(!sprite)
+                    if(sprite && map_node->cached)
+                    {
+                        /* Still decoded from a previous level. */
+                        spr_lru_unlink(map_node);
+                    }
+                    else if(!sprite)
                     {
                         // Load the sprite file, then assign its
                         // new pointer to the sprite map using our
@@ -4411,12 +4554,18 @@ void cachesprite(int index, int load)
                     // Does the target sprite exist?
                     sprite = map_node->sprite;
 
-                    if(sprite)
+                    if(sprite && !map_node->cached)
                     {
-                        // Free the target sprite's resources, then remove
-                        // its pointer from sprite map.
+                        if(map_node->bytes && map_node->bytes <= sprite_cache_budget)
+                        {
+                            /* Hold it; the next level probably wants it. */
+                            spr_cache_put(map_node);
+                        }
+                        else
+                        {
                         free(sprite);
                         map_node->sprite = NULL;
+                        }
 
                         //printf("uncached sprite: %s\n", map_node->filename);
                     }
@@ -4441,12 +4590,21 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
     int clipl, clipr, clipt, clipb;
     s_sprite_list *curr = NULL, *head = NULL, *toshare = NULL;
 
-    for(i = 0; i < sprites_loaded; i++)
+    if(!spr_name_ready) spr_name_reset();
+    for(i = sprite_map ? spr_name_bucket[spr_name_hash(filename)] : -1;
+        i >= 0 && i < sprites_loaded;
+        i = spr_name_next[i])
     {
-        if(sprite_map && sprite_map[i].node)
         {
-            if(stricmp(sprite_map[i].node->filename, filename) == 0)
+            if(sprite_map[i].node && stricmp(sprite_map[i].node->filename, filename) == 0)
             {
+                if(sprite_map[i].node->cached)
+                {
+                    /* Held from an earlier level: take it back into use.  This
+                       is the path a re-used sprite actually arrives by, and it
+                       must leave the LRU or it could be evicted while in use. */
+                    spr_lru_unlink(sprite_map[i].node);
+                }
                 if(!sprite_map[i].node->sprite)
                 {
                     sprite_map[i].node->sprite = loadsprite2(filename, NULL, NULL);
@@ -4470,6 +4628,7 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
         sprite_map[sprites_loaded].node = toshare;
         sprite_map[sprites_loaded].centerx = ofsx - toshare->sprite->offsetx;
         sprite_map[sprites_loaded].centery = ofsy - toshare->sprite->offsety;
+        spr_name_add(sprites_loaded);
         ++sprites_loaded;
         return sprites_loaded - 1;
     }
@@ -4494,6 +4653,9 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
     }
     memcpy(curr->filename, filename, len);
     curr->filename[len] = 0;
+    curr->bytes = size;
+    curr->cached = 0;
+    curr->lru_prev = curr->lru_next = NULL;
     encodesprite(ofsx - clipl, ofsy - clipt, bitmap, curr->sprite);
     if(sprite_list == NULL)
     {
@@ -4510,6 +4672,7 @@ int loadsprite(char *filename, int ofsx, int ofsy, int bmpformat)
     sprite_map[sprites_loaded].node = sprite_list;
     sprite_map[sprites_loaded].centerx = ofsx - clipl;
     sprite_map[sprites_loaded].centery = ofsy - clipt;
+    spr_name_add(sprites_loaded);
     sprite_list->sprite->offsetx = clipl;
     sprite_list->sprite->offsety = clipt;
     sprite_list->sprite->srcwidth = bitmap->clipped_width;
@@ -13380,6 +13543,10 @@ void preload_cached_model(char *name)
       }
       pos += getNewLineStart(buf + pos);
     }
+
+    /* buffer_pakfile() hands over ownership; without this every model
+       preloaded at startup leaks its text -- 91.8 MB over a full run. */
+    free(buf);
   }
 }
 
@@ -36491,6 +36658,7 @@ void borShutdown(int status, char *msg, ...)
 
 
     getRamStatus(BYTES);
+    flushLogFiles();
     savesettings();
 
     enginecreditsScreen = 1;		//entry point for the engine credits screen.
