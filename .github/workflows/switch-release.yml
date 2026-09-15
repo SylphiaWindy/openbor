@@ -1,36 +1,76 @@
-# Builds the Switch NRO and publishes it, on tags only.
+# Builds the Switch NRO for every engine branch and publishes them as one
+# release.
+#
+# The three branches are separate engines, not versions of one: they take
+# different data, they build differently named NROs, and they live in
+# different directories on the SD card. A release is a set of all three, taken
+# at the same moment, so it is obvious which builds were meant to go together.
 #
 # The workflow file GitHub runs for a tag is the one stored at the tagged
-# commit, so this can be tested from a branch: tag a commit, watch the run,
-# then delete the tag and the release it made. Only workflow_dispatch would
-# need the file on the default branch, and there is no dispatch here.
-#
-# Works unchanged on either branch: the NRO is found by glob, so it does not
-# matter whether the project builds OpenBOR.nro or FFLNS.nro.
+# commit, so this only has to exist on whichever branch you tag - it fetches
+# the others itself. Tag a commit, watch the run, then delete the tag and the
+# release it made to test. workflow_dispatch is the exception: GitHub only
+# offers it if the file is also on the default branch.
+
 name: Switch release
 
 on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      branches:
+        description: Branches to build, space separated
+        default: perf-openbor perf-fflns openbor-switch-2018
+      tag:
+        description: Tag to create the release at
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build NRO
+  plan:
+    name: Decide what to build
     runs-on: ubuntu-latest
-    # Prebuilt by the builder image workflow, with the portlibs already in it.
-    # Fetching them here instead meant talking to pkg.devkitpro.org on every
-    # release, and it answers 403 often enough to have failed one in three.
-    # Public, so it needs no credentials here. Built by hand rather than by CI;
-    # tools/switch/README.md says why.
+    outputs:
+      branches: ${{ steps.pick.outputs.branches }}
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      # A tag push carries no inputs, so the default list lives here as well as
+      # in the dispatch input above. Keep the two in step.
+      - id: pick
+        env:
+          IN_BRANCHES: ${{ inputs.branches }}
+          IN_TAG: ${{ inputs.tag }}
+        run: |
+          branches="${IN_BRANCHES:-perf-openbor perf-fflns openbor-switch-2018}"
+          echo "branches=$(printf '%s\n' $branches | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+          echo "tag=${IN_TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Building: $branches"
+
+  build:
+    name: ${{ matrix.branch }}
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      # One branch failing should not hide whether the others still build.
+      # The release job needs every leg, so a partial set publishes nothing.
+      fail-fast: false
+      matrix:
+        branch: ${{ fromJSON(needs.plan.outputs.branches) }}
+
+    # Prebuilt by hand with the portlibs already in it; tools/switch/README.md
+    # says why. Fetching them per release meant talking to pkg.devkitpro.org,
+    # which answers 403 from GitHub runners often enough to have failed one
+    # release in three.
     container: ghcr.io/sylphiawindy/nx-builder:latest
 
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ matrix.branch }}
           # The version comes from the commit count, so the whole history has
           # to be here. A shallow clone would report build 1.
           fetch-depth: 0
@@ -45,35 +85,61 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build.switch -j"$(nproc)"
 
-      - name: Report what was built
+      # One line per branch for the release notes, written next to the NRO so
+      # the upload picks it up. The NRO is found by glob because each branch
+      # names it after its own project.
+      - name: Describe what was built
         run: |
-          ls -l build.switch/*.nro
-          strings build.switch/*.nro | grep -m1 '^OpenBoR v' || true
+          nro=$(ls build.switch/*.nro)
+          printf '| `%s` | %s | `3.0.%s` | %s |\n' \
+            "$(basename "$nro")" \
+            "${{ matrix.branch }}" \
+            "$(git rev-list --count HEAD)" \
+            "$(git rev-parse --short=8 HEAD)" \
+            > build.switch/row.md
+          ls -l "$nro"
+          cat build.switch/row.md
 
       - uses: actions/upload-artifact@v4
         with:
-          name: switch-nro
-          path: build.switch/*.nro
+          # Unique per leg: v4 refuses to overwrite an existing artifact name.
+          name: nro-${{ matrix.branch }}
+          path: |
+            build.switch/*.nro
+            build.switch/row.md
           if-no-files-found: error
 
   release:
     name: Publish
-    needs: build
+    needs: [plan, build]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: switch-nro
+          pattern: nro-*
           path: dist
+
+      - name: Collect
+        run: |
+          mkdir -p out
+          find dist -name '*.nro' -exec mv {} out/ \;
+          {
+            echo '| NRO | Branch | Build | Commit |'
+            echo '| --- | --- | --- | --- |'
+            find dist -name row.md -exec cat {} + | sort
+          } > notes.md
+          cd out && sha256sum *.nro > SHA256SUMS
+          cat ../notes.md
 
       # gh is on the runner, so this step stays outside the build container.
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            dist/*.nro
+            --title "$TAG" \
+            --notes-file notes.md \
+            out/*.nro out/SHA256SUMS
