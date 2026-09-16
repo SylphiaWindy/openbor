@@ -35,7 +35,7 @@ static int textureWidth, textureHeight;        // dimensions of game screen and 
 static int displayWidth, displayHeight;
 
 static GLfloat tcx, tcy; // maximum x and y texture coords in floating-point form
-static GLuint shaderProgram; // fragment shader program
+static GLhandleARB shaderProgram; // fragment shader program
 
 // use some variables declared in video.c that are common to both backends
 extern int stretch;
@@ -300,7 +300,7 @@ int video_gl_set_mode(s_videomodes videomodes)
 	video_gl_setup_screen();
 
 	// set up a GLSL fragment shader if supported
-	GLuint fragmentShader = glCreateShaderObjectARB(GL_FRAGMENT_SHADER_ARB);
+	GLhandleARB fragmentShader = glCreateShaderObjectARB(GL_FRAGMENT_SHADER_ARB);
 	glShaderSourceARB(fragmentShader, 1, &fragmentShaderSourceHighQualityRGB, NULL);
 	glCompileShaderARB(fragmentShader);
 	shaderProgram = glCreateProgramObjectARB();
@@ -426,7 +426,7 @@ int video_gl_setup_yuv_overlay(const yuv_video_mode *mode)
 	video_gl_init_texture(2, mode->width/2, mode->height/2, 1);
 
 	// set up shader to do YUV->RGB conversion
-	GLuint fragmentShader = glCreateShaderObjectARB(GL_FRAGMENT_SHADER_ARB);
+	GLhandleARB fragmentShader = glCreateShaderObjectARB(GL_FRAGMENT_SHADER_ARB);
 	glShaderSourceARB(fragmentShader, 1, &fragmentShaderSourceYUV, NULL);
 	glCompileShaderARB(fragmentShader);
 	shaderProgram = glCreateProgramObjectARB();
