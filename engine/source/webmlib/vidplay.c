@@ -415,7 +415,21 @@ static int init_video(nestegg *nestegg_ctx, int track, video_context *video_ctx)
     nestegg_track_video_params(nestegg_ctx, track, &video_params);
     assert(video_params.stereo_mode == NESTEGG_VIDEO_MONO);
 
-    if (vpx_codec_dec_init(&(video_ctx->vpx_ctx), vpx_codec_vp8_dx(), NULL, 0))
+    /*
+     * Decode across cores. libvpx defaults to one thread, and one core of a
+     * Switch does not decode 1080p VP8 in real time -- SoRX's intro is
+     * 1920x1080 at 30 and 60 fps.
+     *
+     * Falling behind is heard as well as seen: one demux thread feeds both
+     * the video and the audio packet queue and blocks when either is full,
+     * so it delivers packets no faster than the video thread takes them.
+     * Audio that arrives at two thirds of real time plays in bursts.
+     */
+    vpx_codec_dec_cfg_t vpx_cfg;
+    memset(&vpx_cfg, 0, sizeof(vpx_cfg));
+    vpx_cfg.threads = 3;
+
+    if (vpx_codec_dec_init(&(video_ctx->vpx_ctx), vpx_codec_vp8_dx(), &vpx_cfg, 0))
     {
         printf("Error: failed to initialize libvpx\n");
         return -1;
