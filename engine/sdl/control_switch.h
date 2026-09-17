@@ -12,10 +12,22 @@
 #include "joysticks.h"
 
 #define	CONTROL_ESC                 (JOY_LIST_FIRST + 4) + 1    // LSTICK
-#define	CONTROL_DEFAULT1_UP         (JOY_LIST_FIRST + 28) + 1   // UP (DIGITAL OR ANALOG)
-#define	CONTROL_DEFAULT1_RIGHT      (JOY_LIST_FIRST + 31) + 1   // RIGHT (DIGITAL OR ANALOG)
-#define	CONTROL_DEFAULT1_DOWN       (JOY_LIST_FIRST + 29) + 1   // DOWN (DIGITAL OR ANALOG)
-#define	CONTROL_DEFAULT1_LEFT       (JOY_LIST_FIRST + 30) + 1   // LEFT (DIGITAL OR ANALOG)
+/*
+ * libnx reports the left stick's four directions as buttons 16-19, in left,
+ * up, right, down order, and the d-pad as 12-15 in the same order. control.c
+ * folds the d-pad and the analog axes onto 16-19, so binding movement here
+ * takes input from all three.
+ *
+ * These were 28-31 before, which SDL had put the axes at when the port was
+ * written. Today's SDL reports 28 buttons and 4 axes on a Switch pad, so the
+ * axes land at 28 (X-), 29 (X+), 30 (Y-) and 31 (Y+) -- left, right, up,
+ * down, not the up, down, left, right these constants assumed. Left read as
+ * up and right as down.
+ */
+#define	CONTROL_DEFAULT1_LEFT       (JOY_LIST_FIRST + 16) + 1   // LEFT (DIGITAL OR ANALOG)
+#define	CONTROL_DEFAULT1_UP         (JOY_LIST_FIRST + 17) + 1   // UP (DIGITAL OR ANALOG)
+#define	CONTROL_DEFAULT1_RIGHT      (JOY_LIST_FIRST + 18) + 1   // RIGHT (DIGITAL OR ANALOG)
+#define	CONTROL_DEFAULT1_DOWN       (JOY_LIST_FIRST + 19) + 1   // DOWN (DIGITAL OR ANALOG)
 #define	CONTROL_DEFAULT1_FIRE1      (JOY_LIST_FIRST + 0) + 1    // A
 #define	CONTROL_DEFAULT1_FIRE2      (JOY_LIST_FIRST + 1) + 1    // B
 #define	CONTROL_DEFAULT1_FIRE3      (JOY_LIST_FIRST + 6) + 1    // L
