@@ -359,6 +359,24 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
                 if(hat_value & SDL_HAT_LEFT)    joysticks[i].Hats |= SDL_HAT_LEFT   << (j*4);
             }
 
+#ifdef __SWITCH__
+			/*
+			 * And the analog stick, which SDL reports twice: as the digital
+			 * buttons 16-19 folded onto above, and as axes 0 and 1. libnx and
+			 * SDL pick their own thresholds, so take either as movement.
+			 *
+			 * Axis bits run negative, positive per axis: 0 and 1 are the X
+			 * axis, left and right; 2 and 3 the Y axis, up and down.
+			 */
+			if(joysticks[i].NumAxes >= 2)
+			{
+				if(joysticks[i].Axes & 0x01) joysticks[i].Buttons |= 1 << 16; // left
+				if(joysticks[i].Axes & 0x04) joysticks[i].Buttons |= 1 << 17; // up
+				if(joysticks[i].Axes & 0x02) joysticks[i].Buttons |= 1 << 18; // right
+				if(joysticks[i].Axes & 0x08) joysticks[i].Buttons |= 1 << 19; // down
+			}
+#endif
+
 			// combine axis, hat, and button state into a single value
 			joysticks[i].Data = joysticks[i].Buttons;
 			joysticks[i].Data |= joysticks[i].Axes << joysticks[i].NumButtons;
