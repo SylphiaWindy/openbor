@@ -24,6 +24,26 @@ nx_create_nro(${PROJECT_NAME}
 )
 
 # Distribution Preperation
+#
+# The engine's own POST_BUILD step copies the text files into
+# engine/releases, which a fresh checkout does not have, so make the tree
+# here first: POST_BUILD commands run in the order they are added.
+add_custom_command(TARGET ${PROJECT_NAME}
+  POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory ../engine/releases/SWITCH/Logs
+  COMMAND ${CMAKE_COMMAND} -E make_directory ../engine/releases/SWITCH/Paks
+  COMMAND ${CMAKE_COMMAND} -E make_directory ../engine/releases/SWITCH/Saves
+  COMMAND ${CMAKE_COMMAND} -E make_directory ../engine/releases/SWITCH/ScreenShots
+)
+
+# The NRO is built from the ELF by a command of its own, so it does not exist
+# yet while the executable's POST_BUILD steps run. Copy it from a target that
+# waits for it.
+add_custom_target(${PROJECT_NAME}_nro_release ALL
+  DEPENDS ${PROJECT_NAME}.nro
+  COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_NAME}.nro ../engine/releases/SWITCH/${PROJECT_NAME}.nro
+)
+
 add_custom_target(${PROJECT_NAME}_switch_release
   DEPENDS ${PROJECT_NAME}.nro
   COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/${PROJECT_NAME}-${OPENBOR_VERSION}_switch.zip

@@ -50571,7 +50571,6 @@ void menu_options_video()
 #ifndef __SWITCH__
                 video_fullscreen_flip();
 #endif
-#endif
                 break;
             case 4:
                 savedata.usegl = !savedata.usegl;

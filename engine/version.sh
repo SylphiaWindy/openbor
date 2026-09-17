@@ -27,7 +27,9 @@ fi
 }
 
 function get_revnum {
-  if test -d "../.git" || test -d ".git"; then
+  # Ask git rather than looking for a .git directory: in a linked worktree
+  # .git is a file, the test fails, and the fallback below blocks on read.
+  if git rev-parse --git-dir >/dev/null 2>&1; then
     VERSION_BUILD=`git rev-list --count HEAD`
     # get commit hash, 7 chars in length is enough, and still work when supply as URL on github.com
     VERSION_COMMIT=`git rev-parse HEAD | cut -c -7`

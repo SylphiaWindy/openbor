@@ -41,7 +41,10 @@ int brightness = 0;
 
 void initSDL()
 {
+	// The Switch reports no display modes; its resolution is fixed below.
+#ifndef __SWITCH__
 	SDL_DisplayMode video_info;
+#endif
 	int init_flags = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC;
 
 	SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, "0");

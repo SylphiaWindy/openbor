@@ -20,6 +20,19 @@ add_definitions(
   -D_FILE_OFFSET_BITS=64
 )
 
+target_include_directories(${PROJECT_NAME} PRIVATE
+  $ENV{DEVKITPRO}/libnx/include
+  $ENV{DEVKITPRO}/portlibs/switch/include
+  $ENV{DEVKITPRO}/portlibs/switch/include/SDL2
+)
+
+# Vorbis's FPU control block compiles to nothing on aarch64, leaving the
+# variable it declares unused. Not ours to fix, and not worth a blanket flag.
+set_source_files_properties(
+  ${CMAKE_SOURCE_DIR}/engine/source/webmlib/samplecvt.c
+  PROPERTIES COMPILE_OPTIONS -Wno-unused-variable
+)
+
 # Routes stdout to nxlink so a debug build can be watched from the host.
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_definitions(-D__NXLINK__)
