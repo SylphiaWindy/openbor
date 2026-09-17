@@ -49345,11 +49345,12 @@ finish:
 void menu_options_input()
 {
     int quit = 0;
-    #if __SWITCH__
-    int selector = 0; // 0
-    #else
-    int selector = 1; // 0
-    #endif
+    // Row 0 is a toggle -- gamepads elsewhere, single joycon mode on Switch --
+    // and row 1 is the first player. Start on the player, as every other
+    // platform does: the port started on row 0, where a press meant to open
+    // player 1's setup silently flipped single joycon mode instead, and from
+    // then on every row was one below where it was expected.
+    int selector = 1;
     int x_pos = -6;
     #if ANDROID
     int OPTIONS_NUM = 6;
