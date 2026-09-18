@@ -34458,6 +34458,10 @@ void display_credits()
         font_printf(col1,  s + v * m, 0, 0, "PS Vita");
         font_printf(col2, s + v * m, 0, 0, "Plombo"); ++m;
 
+        font_printf(col1,  s + v * m, 0, 0, "Switch");
+        font_printf(col2, s + v * m, 0, 0, "cpasjuste"); ++m;
+        font_printf(col2, s + v * m, 0, 0, "Sylphia"); ++m;
+
         update(2, 0);
 
         done |= (_time > finishtime);
