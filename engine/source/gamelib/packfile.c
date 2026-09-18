@@ -1477,7 +1477,6 @@ void packfile_music_read_one(fileliststruct *filelist, int index)
     size_t off = 0;
     unsigned int pns_len, filestart, filesize;
     const char *name, *dot;
-    unsigned int entries = 0;
 
     if(filelist == NULL || index < 0 || filelist[index].bgmScanned)
     {
@@ -1501,7 +1500,6 @@ void packfile_music_read_one(fileliststruct *filelist, int index)
     {
         while(pak_index_entry(&off, &pns_len, &filestart, &filesize, &name))
         {
-            entries++;
             strncpy(namebuf, name, MAX_FILENAME_LEN - 1);
             namebuf[MAX_FILENAME_LEN - 1] = 0;
 
