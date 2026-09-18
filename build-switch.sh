@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build the stock OpenBOR engine into a Switch NRO.
+# Build the SoRX engine (OpenBOR 4.0, upstream a1ee56d0) into a Switch NRO.
 #
 #   ./build-switch.sh          incremental build
 #   ./build-switch.sh clean    wipe the build directory first
 #
-# Output: build.switch/OpenBOR.nro
+# Output: build.switch/SoRX.nro
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

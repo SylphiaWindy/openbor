@@ -12,15 +12,22 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 
 # DevkitPro
-nx_generate_nacp(${PROJECT_NAME}.nacp
-  NAME    "${PROJECT_NAME}"
+#
+# The NRO is named after the game this engine ships with, not the project:
+# every release branch is an OpenBOR, and a release carries all of them side
+# by side. hbmenu shows the NACP name.
+set(SWITCH_NRO_NAME "SoRX")
+
+nx_generate_nacp(${SWITCH_NRO_NAME}.nacp
+  NAME    "${SWITCH_NRO_NAME}"
   AUTHOR  "cpasjuste, Sylphia"
   VERSION "${OPENBOR_VERSION}"
 )
 
 nx_create_nro(${PROJECT_NAME}
-  NACP ${PROJECT_NAME}.nacp
-  ICON "${CMAKE_SOURCE_DIR}/engine/resources/switch_icon.jpg"
+  OUTPUT ${SWITCH_NRO_NAME}.nro
+  NACP   ${SWITCH_NRO_NAME}.nacp
+  ICON   "${CMAKE_SOURCE_DIR}/engine/resources/switch_icon.jpg"
 )
 
 # Distribution Preperation
@@ -40,14 +47,14 @@ add_custom_command(TARGET ${PROJECT_NAME}
 # yet while the executable's POST_BUILD steps run. Copy it from a target that
 # waits for it.
 add_custom_target(${PROJECT_NAME}_nro_release ALL
-  DEPENDS ${PROJECT_NAME}.nro
-  COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_NAME}.nro ../engine/releases/SWITCH/${PROJECT_NAME}.nro
+  DEPENDS ${SWITCH_NRO_NAME}.nro
+  COMMAND ${CMAKE_COMMAND} -E copy ${SWITCH_NRO_NAME}.nro ../engine/releases/SWITCH/${SWITCH_NRO_NAME}.nro
 )
 
 add_custom_target(${PROJECT_NAME}_switch_release
-  DEPENDS ${PROJECT_NAME}.nro
-  COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/${PROJECT_NAME}-${OPENBOR_VERSION}_switch.zip
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/release/${PROJECT_NAME}
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.nro ${CMAKE_BINARY_DIR}/release/${PROJECT_NAME}/
-  COMMAND cd ${CMAKE_BINARY_DIR}/release && zip -r ../${PROJECT_NAME}-${OPENBOR_VERSION}_switch.zip ${PROJECT_NAME}
+  DEPENDS ${SWITCH_NRO_NAME}.nro
+  COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/${SWITCH_NRO_NAME}-${OPENBOR_VERSION}_switch.zip
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/release/${SWITCH_NRO_NAME}
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${SWITCH_NRO_NAME}.nro ${CMAKE_BINARY_DIR}/release/${SWITCH_NRO_NAME}/
+  COMMAND cd ${CMAKE_BINARY_DIR}/release && zip -r ../${SWITCH_NRO_NAME}-${OPENBOR_VERSION}_switch.zip ${SWITCH_NRO_NAME}
 )

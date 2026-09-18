@@ -5,20 +5,20 @@
 #
 #   ./netload.sh <ip> <dest>
 #
-#   ./netload.sh 10.1.1.81 OpenBOR/OpenBOR.nro
-#   NRO_DIR=build.debug ./netload.sh 10.1.1.81 OpenBOR/OpenBOR.nro   (debug build)
+#   ./netload.sh 10.1.1.81 sorx/SoRX.nro
+#   NRO_DIR=build.debug ./netload.sh 10.1.1.81 sorx/SoRX.nro   (debug build)
 #
 # <dest> is the destination path INCLUDING the file name, relative to hbmenu's
 # own root, which is sdmc:/switch. Getting it wrong fails in two distinct ways:
 #
-#   switch/FFLNS            file-extension/filename not recognized
+#   switch/SoRX             file-extension/filename not recognized
 #                           nxlink sends this string verbatim as the file name
 #                           and never appends the basename, so hbmenu sees no
 #                           .nro extension.
-#   switch/OpenBOR/OpenBOR.nro  No such file or directory
+#   switch/sorx/SoRX.nro        No such file or directory
 #                           hbmenu prepends its root, giving
-#                           /switch/switch/OpenBOR/OpenBOR.nro.
-#   OpenBOR/OpenBOR.nro         works.
+#                           /switch/switch/sorx/SoRX.nro.
+#   sorx/SoRX.nro               works.
 #
 # The destination has to be the directory the paks live in: on Switch the engine
 # leaves rootDir empty and looks for "Paks" relative to the working directory,
@@ -26,7 +26,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-NRO="$HERE/${NRO_DIR:-build.switch}/OpenBOR.nro"
+NRO="$HERE/${NRO_DIR:-build.switch}/SoRX.nro"
 IMAGE="nx-builder:latest"
 
 [ -f "$NRO" ] || { echo "not built yet: $NRO — run ./build-switch.sh first" >&2; exit 1; }
@@ -50,4 +50,4 @@ TTY_ARG=()
 # TCP connection back to it.
 exec docker run --rm "${TTY_ARG[@]}" --network host \
     -v "$HERE":/src -w /src \
-    "$IMAGE" nxlink -s "${ARGS[@]}" "${NRO_DIR:-build.switch}/OpenBOR.nro"
+    "$IMAGE" nxlink -s "${ARGS[@]}" "${NRO_DIR:-build.switch}/SoRX.nro"
