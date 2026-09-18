@@ -1,10 +1,12 @@
 # Builds the Switch NRO for every engine branch and publishes them as one
 # release.
 #
-# The three branches are separate engines, not versions of one: they take
-# different data, they build differently named NROs, and they live in
-# different directories on the SD card. A release is a set of all three, taken
-# at the same moment, so it is obvious which builds were meant to go together.
+# The branches are separate engines, not versions of one: they take different
+# data, they build differently named NROs, and they live in different
+# directories on the SD card. A release is a set of all of them, taken at the
+# same moment, so it is obvious which builds were meant to go together. The
+# notes say which file is for what, and what changed on each engine since the
+# release before.
 #
 # The workflow file GitHub runs for a tag is the one stored at the tagged
 # commit, so this only has to exist on whichever branch you tag - it fetches
@@ -22,7 +24,7 @@ on:
     inputs:
       branches:
         description: Branches to build, space separated
-        default: perf-openbor perf-fflns openbor-switch-2018
+        default: perf-sorx perf-openbor perf-fflns openbor-switch-2018
       tag:
         description: Tag to create the release at
         required: true
@@ -45,7 +47,7 @@ jobs:
           IN_BRANCHES: ${{ inputs.branches }}
           IN_TAG: ${{ inputs.tag }}
         run: |
-          branches="${IN_BRANCHES:-perf-openbor perf-fflns openbor-switch-2018}"
+          branches="${IN_BRANCHES:-perf-sorx perf-openbor perf-fflns openbor-switch-2018}"
           echo "branches=$(printf '%s\n' $branches | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
           echo "tag=${IN_TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "Building: $branches"
@@ -85,16 +87,22 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build.switch -j"$(nproc)"
 
-      # One line per branch for the release notes, written next to the NRO so
-      # the upload picks it up. The NRO is found by glob because each branch
-      # names it after its own project.
+      # One table row per branch for the release notes, written next to the
+      # NRO so the upload picks it up. The NRO is found by glob because each
+      # branch names it after its own game. The version is the engine's own:
+      # major.minor from version.sh, build from the commit count, the same
+      # string the engine prints into its log.
       - name: Describe what was built
+        env:
+          BRANCH: ${{ matrix.branch }}
         run: |
           nro=$(ls build.switch/*.nro)
-          printf '| `%s` | %s | `3.0.%s` | %s |\n' \
+          major=$(sed -n 's/^ *VERSION_MAJOR=//p' engine/version.sh | head -1)
+          minor=$(sed -n 's/^ *VERSION_MINOR=//p' engine/version.sh | head -1)
+          printf '| `%s` | %s | `%s.%s.%s` | `%s` |\n' \
             "$(basename "$nro")" \
-            "${{ matrix.branch }}" \
-            "$(git rev-list --count HEAD)" \
+            "$BRANCH" \
+            "${major:-?}" "${minor:-?}" "$(git rev-list --count HEAD)" \
             "$(git rev-parse --short=8 HEAD)" \
             > build.switch/row.md
           ls -l "$nro"
@@ -115,6 +123,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # The changelogs need each branch's history. Any ref will do for the
+      # checkout itself; the branches are fetched below.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: repo
+
       - uses: actions/download-artifact@v4
         with:
           pattern: nro-*
@@ -124,13 +139,96 @@ jobs:
         run: |
           mkdir -p out
           find dist -name '*.nro' -exec mv {} out/ \;
-          {
-            echo '| NRO | Branch | Build | Commit |'
-            echo '| --- | --- | --- | --- |'
-            find dist -name row.md -exec cat {} + | sort
-          } > notes.md
+          find dist -name row.md -exec cat {} + | sort > rows.md
           cd out && sha256sum *.nro > SHA256SUMS
-          cat ../notes.md
+          cat ../rows.md
+
+      # The previous release's table says which commit of each branch shipped
+      # last time; the changelog for a branch is what came after it. A branch
+      # that was not in the previous release gets its recent history instead.
+      - name: Write the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          BRANCHES: ${{ needs.plan.outputs.branches }}
+        run: |
+          set -euo pipefail
+
+          # | `NRO` | branch | `version` | `commit` |  ->  NRO branch version commit
+          fields() { tr -d '`' | awk -F'|' '{gsub(/^ +| +$/,"",$2); gsub(/^ +| +$/,"",$3); gsub(/^ +| +$/,"",$4); gsub(/^ +| +$/,"",$5); print $2, $3, $4, $5}'; }
+
+          prev_tag=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' || true)
+          : > prev_rows.txt
+          if [ -n "$prev_tag" ]; then
+            gh release view "$prev_tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+              | grep -E '^\| `[^`]+\.nro` \|' | fields > prev_rows.txt || true
+          fi
+          echo "previous release: ${prev_tag:-none}"; cat prev_rows.txt
+
+          cd repo
+          for b in $(echo "$BRANCHES" | jq -r '.[]'); do
+            git fetch -q origin "$b"
+          done
+          cd ..
+
+          {
+            echo "## What is in this release"
+            echo
+            echo '| NRO | Branch | Version | Commit |'
+            echo '| --- | --- | --- | --- |'
+            cat rows.md
+            echo
+            cat <<'GUIDE'
+          ## Which file do I need?
+
+          Every engine we build for the Switch is here, built at the same moment.
+          They are different engines for different paks, not versions of one, and each
+          lives in its own folder on the SD card: the engine looks for `Paks/` and
+          `Saves/` next to its own NRO, and the settings files are not interchangeable
+          between engines.
+
+          | Download | For | Put it at | Paks go in |
+          | --- | --- | --- | --- |
+          | `SoRX.nro` | Streets of Rage X (beta 35). The engine the game ships with: OpenBOR 4.0, upstream `a1ee56d0`. | `sdmc:/switch/sorx/SoRX.nro` | `sdmc:/switch/sorx/Paks/SORX.pak` |
+          | `OpenBOR.nro` | Ordinary OpenBOR paks, on the 3.0 final engine. | `sdmc:/switch/openbor/OpenBOR.nro` | `sdmc:/switch/openbor/Paks/` |
+          | `FFLNS.nro` | Final Fight LNS only. This engine is modified for that pak and cannot load stock paks. | `sdmc:/switch/fflns/FFLNS.nro` | `sdmc:/switch/fflns/Paks/` |
+          | `OpenBOR2018.nro` | Mods written for the 2018-era engine (build 6428) that misbehave on 3.0 final. | `sdmc:/switch/openbor2018/OpenBOR2018.nro` | `sdmc:/switch/openbor2018/Paks/` |
+
+          1. Copy the NRO into its folder and put the pak in `Paks/` beside it. `Saves/`,
+             `Logs/` and `ScreenShots/` are created on first run.
+          2. Launch it from hbmenu. One pak starts straight away; several show a pak menu.
+          3. To update, replace the NRO only. Keep `Paks/` and `Saves/`.
+          4. Controls: stick or d-pad to move, A/B/X/Y and L/R to attack, + or - for start,
+             click the right stick for a screenshot. Settings are saved per pak in
+             `Saves/<pak>.cfg`. A pak you have run on an older build keeps that build's
+             bindings; if movement or buttons behave oddly after updating, open
+             System Options > Control Options > Setup Player 1 and pick Default, or delete
+             that `.cfg`.
+          5. `SHA256SUMS` lists the checksum of every NRO above. The engine prints its own
+             version into `Logs/OpenBorLog.txt` as `OpenBOR vX.Y Build N (commit hash: ...)`;
+             Build is the number in the table.
+
+          ## Changes
+          GUIDE
+            fields < rows.md > new_rows.txt
+            while read -r nro branch version commit; do
+              echo
+              prev=$(awk -v b="$branch" '$2 == b {print $4; exit}' prev_rows.txt)
+              if [ -n "$prev" ] && git -C repo cat-file -e "$prev^{commit}" 2>/dev/null; then
+                echo "### \`$nro\` ($branch) since $prev_tag"
+                echo
+                log=$(git -C repo log --no-merges --format='- %s (%h)' "$prev..origin/$branch")
+                if [ -n "$log" ]; then echo "$log"; else echo "- No changes."; fi
+              else
+                echo "### \`$nro\` ($branch), not in the previous release"
+                echo
+                echo "Most recent commits:"
+                echo
+                git -C repo log --no-merges --format='- %s (%h)' -n 15 "origin/$branch"
+              fi
+            done < new_rows.txt
+          } > notes.md
+          cat notes.md
 
       # gh is on the runner, so this step stays outside the build container.
       - name: Create release
