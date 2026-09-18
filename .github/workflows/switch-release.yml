@@ -208,6 +208,13 @@ jobs:
              version into `Logs/OpenBorLog.txt` as `OpenBOR vX.Y Build N (commit hash: ...)`;
              Build is the number in the table.
 
+          ## Credits
+
+          - OpenBOR is the [OpenBOR Team](https://github.com/DCurrent/openbor)'s continuation of
+            Senile Team's Beats of Rage. The SoRX build is upstream OpenBOR 4.0; the others are 3.0.
+          - The Switch port is [cpasjuste](https://gbatemp.net/members/cpasjuste.370907/)'s work,
+            carried forward onto each of these engines here.
+
           ## Changes
           GUIDE
             fields < rows.md > new_rows.txt
