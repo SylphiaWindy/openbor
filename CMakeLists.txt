@@ -165,11 +165,79 @@ if (NINTENDO_SWITCH)
         list(APPEND BOR_CFLAGS -D__NXLINK__)
     endif ()
     list(APPEND BOR_LDFLAGS stdc++)
+elseif (WIN32)
+    #####################
+    # WINDOWS PLATORM
+    #####################
+    # Cross-built from macOS with mingw-w64 against the SDK that ships in
+    # tools/win-sdk; see openbor-tools/mingw32-toolchain.cmake. The engine's
+    # Windows paths key off WIN, and ELF is what the other Windows builds
+    # define alongside it.
+    list(APPEND BOR_CFLAGS -DWIN -DELF)
+    list(APPEND BOR_LDFLAGS opengl32 winmm gdi32 ole32 oleaut32 imm32 version
+            setupapi psapi hid shell32 user32 uuid dinput8 mingw32)
+    # Without this the linker produces a console subsystem binary and Windows
+    # opens a terminal alongside the game.
+    list(APPEND BOR_LDFLAGS -mwindows)
+
+    # Icon and version info. One tree carries a .rc to compile, the other a
+    # .res already built; without either the exe gets Windows' blank default.
+    set(BOR_RC  "${CMAKE_SOURCE_DIR}/engine/resources/OpenBOR.rc")
+    set(BOR_RES "${CMAKE_SOURCE_DIR}/engine/resources/OpenBOR.res")
+    if (EXISTS "${BOR_RC}")
+        set(BOR_RES "${CMAKE_BINARY_DIR}/OpenBOR.res")
+        add_custom_command(OUTPUT ${BOR_RES}
+                COMMAND ${CMAKE_RC_COMPILER} -I${CMAKE_SOURCE_DIR}/engine
+                        -O coff -o ${BOR_RES} OpenBOR.rc
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/engine/resources
+                DEPENDS ${BOR_RC}
+                COMMENT "Compiling Windows resources")
+        add_custom_target(openbor_resources DEPENDS ${BOR_RES})
+        set(BOR_RES_TARGET openbor_resources)
+    elseif (NOT EXISTS "${BOR_RES}")
+        unset(BOR_RES)
+    endif ()
+    list(APPEND BOR_LINK_DIRS_WANTED 1)
+elseif (APPLE)
+    #####################
+    # MACOS PLATORM
+    #####################
+    # Mac rides on the Linux paths -- ram.c and packfile.c both branch on
+    # LINUX -- with DARWIN on top for the few places that want the Mach or BSD
+    # call instead of the Linux one.
+    list(APPEND BOR_CFLAGS -D__LINUX__ -DLINUX -DDARWIN)
+
+    # <malloc.h> is the Linux spelling; the SDK keeps that header a directory
+    # down, so put the directory on the search path rather than touching every
+    # include of it.
+    execute_process(COMMAND xcrun --show-sdk-path
+            OUTPUT_VARIABLE MACOS_SDK_PATH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    if (MACOS_SDK_PATH AND EXISTS "${MACOS_SDK_PATH}/usr/include/malloc")
+        list(APPEND BOR_INC ${MACOS_SDK_PATH}/usr/include/malloc)
+    endif ()
+
+    foreach (FRAMEWORK Cocoa OpenGL Carbon AudioUnit IOKit)
+        find_library(${FRAMEWORK}_FRAMEWORK ${FRAMEWORK} REQUIRED)
+        list(APPEND BOR_LDFLAGS ${${FRAMEWORK}_FRAMEWORK})
+    endforeach ()
+    list(APPEND BOR_LINK_DIRS_WANTED 1)
 else ()
     #####################
     # LINUX PLATORM
     #####################
     list(APPEND BOR_CFLAGS -D__LINUX__ -DLINUX)
+endif ()
+
+# pkg-config reports bare library names; where they do not sit in a default
+# directory -- a Homebrew prefix, the unpacked Windows SDK -- the paths it
+# reports alongside them have to be passed on too.
+if (BOR_LINK_DIRS_WANTED)
+    link_directories(
+            ${SDL2_LIBRARY_DIRS} ${SDL2_GFX_LIBRARY_DIRS} ${VPX_LIBRARY_DIRS}
+            ${PNG_LIBRARY_DIRS} ${ZLIB_LIBRARY_DIRS}
+            ${VORBIS_LIBRARY_DIRS} ${VORBISFILE_LIBRARY_DIRS} ${OGG_LIBRARY_DIRS})
 endif ()
 
 #####################
@@ -180,6 +248,12 @@ add_dependencies(${CMAKE_PROJECT_NAME} version_h)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${BOR_INC})
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE ${BOR_CFLAGS})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${BOR_LDFLAGS})
+if (BOR_RES)
+    set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES LINK_FLAGS "${BOR_RES}")
+    if (BOR_RES_TARGET)
+        add_dependencies(${CMAKE_PROJECT_NAME} ${BOR_RES_TARGET})
+    endif ()
+endif ()
 
 #####################
 # SWITCH target
