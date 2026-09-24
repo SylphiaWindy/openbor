@@ -362,7 +362,13 @@ void getPakName(char *name, int type)
         strcat(mod, ".inp");
         break;
     case 4:
-        strcat(mod, ".cfg");
+        // Settings carry a line suffix so the 3.0 and 4.0 engines can share a
+        // directory without sharing configuration. The layouts were made to
+        // match, but the meanings did not: swfilter indexes a different list
+        // of blitters on each line, debuginfo is a level here and a bitfield
+        // there, and vsync is folded into fpslimit on 4.0. Same bytes, other
+        // settings -- so keep the files apart.
+        strcat(mod, ".v4.cfg");
         break;
     default:
         // Loose extension!
