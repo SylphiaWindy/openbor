@@ -2714,6 +2714,17 @@ void loadsettings()
     {
         return;
     }
+    // The file is this struct written out verbatim, so a length that is not
+    // exactly ours came from a build whose layout differs, and reading it
+    // would put keys[] and everything after it at the wrong offset. Files
+    // written by older builds are still out there at 328 and 356 bytes.
+    fseek(handle, 0, SEEK_END);
+    if(ftell(handle) != (long)sizeof(savedata))
+    {
+        fclose(handle);
+        return;
+    }
+    fseek(handle, 0, SEEK_SET);
     fread(&savedata, 1, sizeof(savedata), handle);
     fclose(handle);
     if(savedata.compatibleversion != COMPATIBLEVERSION)
@@ -2738,6 +2749,17 @@ void loadfromdefault()
     {
         return;
     }
+    // The file is this struct written out verbatim, so a length that is not
+    // exactly ours came from a build whose layout differs, and reading it
+    // would put keys[] and everything after it at the wrong offset. Files
+    // written by older builds are still out there at 328 and 356 bytes.
+    fseek(handle, 0, SEEK_END);
+    if(ftell(handle) != (long)sizeof(savedata))
+    {
+        fclose(handle);
+        return;
+    }
+    fseek(handle, 0, SEEK_SET);
     fread(&savedata, 1, sizeof(savedata), handle);
     fclose(handle);
     if(savedata.compatibleversion != COMPATIBLEVERSION)
