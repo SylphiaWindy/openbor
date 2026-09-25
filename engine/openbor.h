@@ -63,12 +63,7 @@
 			"\n" \
 			"Special thanks to SEGA and SNK.\n\n"
 
-// Matches the 3.0 line deliberately. A settings file is this engine's
-// s_savedata written out verbatim, the layouts were made to agree field
-// for field, and sharing the constant is the last thing needed for the
-// two to read each other's configuration. Upstream uses 0x00033749; this
-// build is not the one to hand out if that matters.
-#define		COMPATIBLEVERSION	0x00033748
+#define		COMPATIBLEVERSION	0x00033749
 #define		CV_SAVED_GAME		0x00033747
 #define		CV_HIGH_SCORE		0x00033747
 #define     GAME_SPEED          200

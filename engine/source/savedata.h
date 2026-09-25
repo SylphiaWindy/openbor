@@ -40,12 +40,6 @@ typedef struct
     int fullscreen; // Window or Full Screen Mode
     int stretch; // Stretch (1) or preserve aspect ratio (0) in fullscreen mode
     int screen[1][2];
-    // The 3.0 line carries a separate vsync field here, and this struct is
-    // written to disk verbatim with nothing to resync on -- so the slot has to
-    // exist on both sides or every field below it lands at a different offset
-    // in a settings file written by the other build. This engine folds vsync
-    // into fpslimit below and never reads this, but the layouts now agree.
-    int vsync_unused;
     int fpslimit; // Sync to monitor refresh (1), limit to 200/500 FPS (2, 3) or don't (0)
 #if SDL
     int usegl; // 1 if OpenGL is preferred over SDL software blitting

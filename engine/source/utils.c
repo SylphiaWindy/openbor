@@ -363,11 +363,12 @@ void getPakName(char *name, int type)
         break;
     case 4:
         // Settings carry a line suffix so the 3.0 and 4.0 engines can share a
-        // directory without sharing configuration. The layouts were made to
-        // match, but the meanings did not: swfilter indexes a different list
-        // of blitters on each line, debuginfo is a level here and a bitfield
-        // there, and vsync is folded into fpslimit on 4.0. Same bytes, other
-        // settings -- so keep the files apart.
+        // directory without sharing configuration. This struct is written out
+        // verbatim, and the two lines neither agree on its layout nor on what
+        // the fields mean: vsync is a field of its own on 3.0 and folded into
+        // fpslimit here, swfilter indexes a different list of blitters on each
+        // line, and debuginfo is a level here and a bitfield there. Keep the
+        // files apart rather than trying to reconcile them.
         strcat(mod, ".v4.cfg");
         break;
     default:
