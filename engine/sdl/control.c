@@ -1133,8 +1133,10 @@ static void nx_vib_play(int port, float amp, int msec)
  * the same finger does the same thing on either: the right face button
  * attacks, the bottom one is the second attack, the top one jumps, the left
  * one is special, the shoulders are attacks three and four (the triggers
- * repeat them) and Start starts. Escape is deliberately not on the pad: the
- * menus quit to the credits on it, and the pause menu has a Back entry.
+ * repeat them) and Start starts. Escape is not part of the layout: on the
+ * title menu it quits to the credits, so a stray press costs the session.
+ * It lives on R3 of player one's pad instead, see control_update(), because
+ * the debug menu off the pak list has no other way out.
  */
 static u64 gamepad_flags(int port)
 {
@@ -1269,7 +1271,13 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 				if(!gamepad[port]) continue;
 				if((port < numplayers ? port : 0) != player) continue;
 				if(in_menus)
+				{
 					k |= gamepad_flags(port);
+					// Escape, on the stick button where it cannot be brushed
+					// against, and only from the pad player one answers to.
+					if(player == 0 && SDL_GameControllerGetButton(gamepad[port], SDL_CONTROLLER_BUTTON_RIGHTSTICK))
+						k |= FLAG_ESC;
+				}
 				else if(!gamepad_is_bound(port, playercontrols, numplayers))
 					k |= gamepad_flags(port) & FLAG_START;
 			}
