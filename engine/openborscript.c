@@ -1495,6 +1495,22 @@ HRESULT openbor_drawsprite(ScriptVariant **varlist , ScriptVariant **pretvar, in
     {
         goto drawsprite_error;
     }
+    // An unset variable where the sprite should be -- a loadsprite() that
+    // never ran, or a global nothing assigned -- used to end the game: the
+    // call fails, the script fails, and the engine shuts down. Final Fight
+    // LNS Redux does exactly this on its select screen with a completion
+    // badge it never loads. Drawing nothing is what the author would have
+    // seen had the sprite been missing on disk, so draw nothing, and say so
+    // once rather than eighty times a second.
+    if(varlist[0]->vt == VT_EMPTY)
+    {
+        static int warned = 0;
+        if(!warned++)
+        {
+            printf("drawsprite: sprite handle is an unset variable; nothing drawn (reported once).\n");
+        }
+        return S_OK;
+    }
     if(varlist[0]->vt != VT_PTR)
     {
         goto drawsprite_error;
