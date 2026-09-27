@@ -1166,9 +1166,10 @@ static u64 gamepad_flags(int port)
     return k;
 }
 
-// Whether any player's bindings name an input on this joystick port. A pad
-// someone has set up in the control menu is theirs; one nobody has is loose.
-static int gamepad_is_bound(int port, s_playercontrols **playercontrols, int numplayers)
+// The player whose bindings name an input on this joystick port, or -1 when
+// nobody's do. A pad someone has set up in the control menu is theirs; one
+// nobody has is loose.
+static int gamepad_owner(int port, s_playercontrols **playercontrols, int numplayers)
 {
     int p, i, t;
     for(p = 0; p < numplayers; p++)
@@ -1179,12 +1180,14 @@ static int gamepad_is_bound(int port, s_playercontrols **playercontrols, int num
             if(t >= JOY_LIST_FIRST && t <= JOY_LIST_LAST
                && (t - JOY_LIST_FIRST - 1) / JOY_MAX_INPUTS == port)
             {
-                return 1;
+                return p;
             }
         }
     }
-    return 0;
+    return -1;
 }
+
+#define FLAG_DIRECTIONS (FLAG_MOVEUP | FLAG_MOVEDOWN | FLAG_MOVELEFT | FLAG_MOVERIGHT)
 
 // Declared in openbor.c: true outside a level (but not on the select screen)
 // and in the pause menu -- the screens that belong to the engine rather than
@@ -1259,9 +1262,12 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 		 * the screen where a pad is bound. Pads on ports past the last player
 		 * fall to player one, which is fine there: menus read all players.
 		 *
-		 * In play a player is exactly their bindings, so a bound pad adds
-		 * nothing here. A pad nobody has bound contributes only Start, which
-		 * is what opens the pause menu (and lets a newcomer join and go bind).
+		 * In play the buttons are exactly what the player bound. Movement is
+		 * the exception: a binding names either the d-pad or the stick, and a
+		 * pad has both, so the player whose bindings name this pad also gets
+		 * its d-pad and left stick as movement whichever one they bound. A pad
+		 * nobody has bound contributes only Start, which is what opens the
+		 * pause menu (and lets a newcomer join and go bind).
 		 */
 		if(usejoy)
 		{
@@ -1269,17 +1275,23 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 			for(port = 0; port < JOY_LIST_TOTAL; port++)
 			{
 				if(!gamepad[port]) continue;
-				if((port < numplayers ? port : 0) != player) continue;
 				if(in_menus)
 				{
+					if((port < numplayers ? port : 0) != player) continue;
 					k |= gamepad_flags(port);
 					// Escape, on the stick button where it cannot be brushed
 					// against, and only from the pad player one answers to.
 					if(player == 0 && SDL_GameControllerGetButton(gamepad[port], SDL_CONTROLLER_BUTTON_RIGHTSTICK))
 						k |= FLAG_ESC;
 				}
-				else if(!gamepad_is_bound(port, playercontrols, numplayers))
-					k |= gamepad_flags(port) & FLAG_START;
+				else
+				{
+					int owner = gamepad_owner(port, playercontrols, numplayers);
+					if(owner == player)
+						k |= gamepad_flags(port) & FLAG_DIRECTIONS;
+					else if(owner < 0 && (port < numplayers ? port : 0) == player)
+						k |= gamepad_flags(port) & FLAG_START;
+				}
 			}
 		}
 #endif
