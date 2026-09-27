@@ -1126,15 +1126,15 @@ static void nx_vib_play(int port, float amp, int msec)
  *
  * OpenBOR binds one input per action, so a saved binding can take the d-pad
  * or the stick but not both, and taking either leaves the keyboard out. This
- * runs alongside the bindings instead of replacing them: whatever the player
- * has configured still works, and on top of it a pad always drives the game
- * in this fixed layout, with the d-pad and the left stick both moving.
+ * layer fills the gap without getting in the way of the bindings; see
+ * control_update() for when it applies.
  *
  * The layout follows the Switch build's (control_switch.h) by position, so
  * the same finger does the same thing on either: the right face button
  * attacks, the bottom one is the second attack, the top one jumps, the left
  * one is special, the shoulders are attacks three and four (the triggers
- * repeat them), Start starts and Back is escape.
+ * repeat them) and Start starts. Escape is deliberately not on the pad: the
+ * menus quit to the credits on it, and the pause menu has a Back entry.
  */
 static u64 gamepad_flags(int port)
 {
@@ -1160,10 +1160,34 @@ static u64 gamepad_flags(int port)
     if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)
        || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > T_AXIS) k |= FLAG_ATTACK4;
     if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_START)) k |= FLAG_START;
-    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_BACK))  k |= FLAG_ESC;
 
     return k;
 }
+
+// Whether any player's bindings name an input on this joystick port. A pad
+// someone has set up in the control menu is theirs; one nobody has is loose.
+static int gamepad_is_bound(int port, s_playercontrols **playercontrols, int numplayers)
+{
+    int p, i, t;
+    for(p = 0; p < numplayers; p++)
+    {
+        for(i = 0; i < JOY_MAX_INPUTS; i++)
+        {
+            t = playercontrols[p]->settings[i];
+            if(t >= JOY_LIST_FIRST && t <= JOY_LIST_LAST
+               && (t - JOY_LIST_FIRST - 1) / JOY_MAX_INPUTS == port)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// Declared in openbor.c: true outside a level (but not on the select screen)
+// and in the pause menu -- the screens that belong to the engine rather than
+// to a particular player.
+int allow_default_keys(void);
 #endif
 
 void control_update(s_playercontrols ** playercontrols, int numplayers)
@@ -1226,8 +1250,30 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 			}
 		}
 #if SDL2 && !defined(__SWITCH__)
-		// A pad on this player's port always plays, whatever is bound.
-		if(usejoy) k |= gamepad_flags(player);
+		/*
+		 * On the engine's own screens -- the pak list, the title and option
+		 * menus, the control setup, the pause menu -- every pad drives, bound
+		 * or not, in the fixed layout; nobody should need a keyboard to reach
+		 * the screen where a pad is bound. Pads on ports past the last player
+		 * fall to player one, which is fine there: menus read all players.
+		 *
+		 * In play a player is exactly their bindings, so a bound pad adds
+		 * nothing here. A pad nobody has bound contributes only Start, which
+		 * is what opens the pause menu (and lets a newcomer join and go bind).
+		 */
+		if(usejoy)
+		{
+			int port, in_menus = allow_default_keys();
+			for(port = 0; port < JOY_LIST_TOTAL; port++)
+			{
+				if(!gamepad[port]) continue;
+				if((port < numplayers ? port : 0) != player) continue;
+				if(in_menus)
+					k |= gamepad_flags(port);
+				else if(!gamepad_is_bound(port, playercontrols, numplayers))
+					k |= gamepad_flags(port) & FLAG_START;
+			}
+		}
 #endif
 		pcontrols->kb_break = 0;
 		pcontrols->newkeyflags = k & (~pcontrols->keyflags);
