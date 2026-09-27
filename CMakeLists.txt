@@ -193,6 +193,9 @@ elseif (WIN32)
                 DEPENDS ${BOR_RC}
                 COMMENT "Compiling Windows resources")
         add_custom_target(openbor_resources DEPENDS ${BOR_RES})
+        # The .rc includes version.h, which version_h writes; without this
+        # a parallel build from a clean tree compiles the resource first.
+        add_dependencies(openbor_resources version_h)
         set(BOR_RES_TARGET openbor_resources)
     elseif (NOT EXISTS "${BOR_RES}")
         unset(BOR_RES)
