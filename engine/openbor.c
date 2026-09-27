@@ -50570,7 +50570,12 @@ void menu_options_video()
 
 #if SDL
         _menutext((selector == 3), col1, 0, Tr("Display Mode:"));
+#ifdef __SWITCH__
+        // The screen is the window; the flag stays 0 and the toggle is a no-op.
+        _menutext((selector == 3), col2, 0, Tr("Full"));
+#else
         _menutext((selector == 3), col2, 0, savedata.fullscreen ? Tr("Full") : Tr("Window"));
+#endif
 
         _menutext((selector == 4), col1, 1, Tr("Video Backend:"));
         _menutext((selector == 4), col2, 1, (opengl ? Tr("OpenGL") : Tr("SDL")));
@@ -50629,7 +50634,12 @@ void menu_options_video()
         _menutext((selector == 8), col1, 5, Tr("FPS Limit:"));
         _menutext((selector == 8), col2, 5, fpslimit_text);
 
+#ifdef __SWITCH__
+        // Always fullscreen there: this is the one display choice it has.
+        if(1)
+#else
         if(savedata.fullscreen)
+#endif
         {
             _menutext((selector == 9), col1, 6, Tr("Fullscreen Type:"));
             _menutext((selector == 9), col2, 6, (savedata.stretch ? Tr("Stretch to Screen") : Tr("Preserve Aspect Ratio")));
