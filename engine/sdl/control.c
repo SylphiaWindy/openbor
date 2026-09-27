@@ -28,6 +28,12 @@
 
 SDL_Joystick *joystick[JOY_LIST_TOTAL];         // SDL struct for joysticks
 SDL_Haptic *joystick_haptic[JOY_LIST_TOTAL];   // SDL haptic for joysticks
+#if SDL2 && !defined(__SWITCH__)
+// The same devices opened through SDL's game controller API, which knows
+// which physical button is which on a pad and where its sticks are. The
+// joystick handles above see only numbered buttons and axes.
+static SDL_GameController *gamepad[JOY_LIST_TOTAL];
+#endif
 static int usejoy;						        // To be or Not to be used?
 static int numjoy;						        // Number of Joy(s) found
 static int lastkey;						        // Last keyboard key Pressed
@@ -514,6 +520,14 @@ void open_joystick(int i)
         }
     }
 
+#if SDL2 && !defined(__SWITCH__)
+    if(SDL_IsGameController(i))
+    {
+        gamepad[i] = SDL_GameControllerOpen(i);
+        if(gamepad[i]) printf("Game pad layout known for port %d, playing it alongside the bindings.\n", i);
+    }
+#endif
+
     #if GP2X
     joysticks[i].Type = JOY_TYPE_GAMEPARK;
     for(j = 0; j < JOY_MAX_INPUTS + 1; j++)
@@ -568,6 +582,10 @@ void close_joystick(int i)
 {
 	if(joystick[i] != NULL) SDL_JoystickClose(joystick[i]);
 	if(joystick_haptic[i] != NULL) SDL_HapticClose(joystick_haptic[i]);
+#if SDL2 && !defined(__SWITCH__)
+	if(gamepad[i] != NULL) SDL_GameControllerClose(gamepad[i]);
+	gamepad[i] = NULL;
+#endif
 	joystick[i] = NULL;
 	joystick_haptic[i] = NULL;
 	reset_joystick_map(i);
@@ -599,6 +617,9 @@ void control_init(int joy_enable)
 	{
         joystick[i] = NULL;
         joystick_haptic[i] = NULL;
+#if SDL2 && !defined(__SWITCH__)
+        gamepad[i] = NULL;
+#endif
 		reset_joystick_map(i);
 	}
 	joystick_scan(usejoy);
@@ -1098,6 +1119,53 @@ static void nx_vib_play(int port, float amp, int msec)
 }
 #endif
 
+#if SDL2 && !defined(__SWITCH__)
+/*
+ * What the pad on this port is asking for, as FLAG_ bits, read through the
+ * game controller API so the layout is the same on every pad SDL knows.
+ *
+ * OpenBOR binds one input per action, so a saved binding can take the d-pad
+ * or the stick but not both, and taking either leaves the keyboard out. This
+ * runs alongside the bindings instead of replacing them: whatever the player
+ * has configured still works, and on top of it a pad always drives the game
+ * in this fixed layout, with the d-pad and the left stick both moving.
+ *
+ * The layout follows the Switch build's (control_switch.h) by position, so
+ * the same finger does the same thing on either: the right face button
+ * attacks, the bottom one is the second attack, the top one jumps, the left
+ * one is special, the shoulders are attacks three and four (the triggers
+ * repeat them), Start starts and Back is escape.
+ */
+static u64 gamepad_flags(int port)
+{
+    SDL_GameController *pad = gamepad[port];
+    u64 k = 0;
+    int x, y;
+
+    if(!pad || !SDL_GameControllerGetAttached(pad)) return 0;
+
+    x = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
+    y = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_UP)    || y < -T_AXIS) k |= FLAG_MOVEUP;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN)  || y >  T_AXIS) k |= FLAG_MOVEDOWN;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT)  || x < -T_AXIS) k |= FLAG_MOVELEFT;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) || x >  T_AXIS) k |= FLAG_MOVERIGHT;
+
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_B)) k |= FLAG_ATTACK;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_A)) k |= FLAG_ATTACK2;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_Y)) k |= FLAG_JUMP;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_X)) k |= FLAG_SPECIAL;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER)
+       || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT)  > T_AXIS) k |= FLAG_ATTACK3;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)
+       || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > T_AXIS) k |= FLAG_ATTACK4;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_START)) k |= FLAG_START;
+    if(SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_BACK))  k |= FLAG_ESC;
+
+    return k;
+}
+#endif
+
 void control_update(s_playercontrols ** playercontrols, int numplayers)
 {
 #ifdef __SWITCH__
@@ -1157,6 +1225,10 @@ void control_update(s_playercontrols ** playercontrols, int numplayers)
 				}
 			}
 		}
+#if SDL2 && !defined(__SWITCH__)
+		// A pad on this player's port always plays, whatever is bound.
+		if(usejoy) k |= gamepad_flags(player);
+#endif
 		pcontrols->kb_break = 0;
 		pcontrols->newkeyflags = k & (~pcontrols->keyflags);
 		pcontrols->keyflags = k;

@@ -42,6 +42,10 @@ void initSDL()
 {
 	SDL_DisplayMode video_info;
 	int init_flags = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC;
+#if SDL2 && !defined(__SWITCH__)
+	// control.c reads pads through the game controller API as well.
+	init_flags |= SDL_INIT_GAMECONTROLLER;
+#endif
 
     /*#if EE_CURRENT_PLATFORM == EE_PLATFORM_WINDOWS
        SDL_setenv("SDL_AUDIODRIVER", "directsound", true);
