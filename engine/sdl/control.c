@@ -587,6 +587,46 @@ char *control_getkeyname(unsigned int keycode)
 }
 
 /*
+Name the device a player's bindings point at: "None", "Keyboard", or the
+pad's own name. A binding's key code says which device it came from, the
+same way control_getkeyname() reads it, so the answer falls out of the
+player's key table. A pad the bindings name but nothing is plugged into
+counts as none: it is what a script asking "is anyone on this slot" wants.
+*/
+char *control_getdevicename(int player)
+{
+	int i;
+	int btn;
+	int keyboard = 0;
+
+	if(player < 0 || player >= MAX_PLAYERS)
+	{
+		return "None";
+	}
+
+	for(btn = 0; btn < MAX_BTN_NUM; btn++)
+	{
+		unsigned int keycode = savedata.keys[player][btn];
+
+		for(i = 0; i < JOY_LIST_TOTAL; i++)
+		{
+			if((keycode >= (JOY_LIST_FIRST + 1 + (i * JOY_MAX_INPUTS))) && (keycode <= JOY_LIST_FIRST + JOY_MAX_INPUTS + (i * JOY_MAX_INPUTS)))
+				return (joystick[i] && joysticks[i].Name[0]) ? joysticks[i].Name : "None";
+		}
+
+		if(keycode > SDLK_FIRST && keycode < SDLK_LAST)
+			keyboard = 1;
+	}
+
+#if ANDROID
+	// No pad and no keys means the touch overlay.
+	return keyboard ? "Keyboard" : "On-Screen Controller";
+#else
+	return keyboard ? "Keyboard" : "None";
+#endif
+}
+
+/*
 Set global variable, which is used for
 enabling and disabling all joysticks.
 */

@@ -7659,10 +7659,19 @@ toss_error:
 // ===== getplayerproperty =====
 enum playerproperty_enum
 {
+    _pp_button_attack1,
+    _pp_button_attack2,
+    _pp_button_attack3,
+    _pp_button_attack4,
+    _pp_button_jump,
+    _pp_button_screenshot,
+    _pp_button_special,
+    _pp_button_start,
     _pp_colourmap,
     _pp_combokey,
     _pp_combostep,
     _pp_credits,
+    _pp_device_name,
     _pp_disablekeys,
     _pp_ent,
     _pp_entity,
@@ -7694,10 +7703,19 @@ int mapstrings_playerproperty(ScriptVariant **varlist, int paramCount)
 
     static const char *proplist[] =
     {
+        "button_attack1",
+        "button_attack2",
+        "button_attack3",
+        "button_attack4",
+        "button_jump",
+        "button_screenshot",
+        "button_special",
+        "button_start",
         "colourmap",
         "combokey",
         "combostep",
         "credits",
+        "device_name",
         "disablekeys",
         "ent",
         "entity",
@@ -7796,6 +7814,43 @@ HRESULT openbor_getplayerproperty(ScriptVariant **varlist , ScriptVariant **pret
     {
         ScriptVariant_ChangeType(*pretvar, VT_STR);
         (*pretvar)->strVal = StrCache_CreateNewFrom(player[index].name);
+        break;
+    }
+    // Which device the player's bindings point at, and what each bound
+    // button is called on it -- the same names the engine's own control
+    // menu shows. Scripts that draw their own menus use these to label
+    // buttons per device instead of guessing. Read-only.
+    case _pp_device_name:
+    {
+        ScriptVariant_ChangeType(*pretvar, VT_STR);
+        (*pretvar)->strVal = StrCache_CreateNewFrom(control_getdevicename(index));
+        break;
+    }
+    case _pp_button_attack1:
+    case _pp_button_attack2:
+    case _pp_button_attack3:
+    case _pp_button_attack4:
+    case _pp_button_jump:
+    case _pp_button_special:
+    case _pp_button_start:
+    case _pp_button_screenshot:
+    {
+        int sdid;
+
+        switch(prop)
+        {
+        case _pp_button_attack1:    sdid = SDID_ATTACK;     break;
+        case _pp_button_attack2:    sdid = SDID_ATTACK2;    break;
+        case _pp_button_attack3:    sdid = SDID_ATTACK3;    break;
+        case _pp_button_attack4:    sdid = SDID_ATTACK4;    break;
+        case _pp_button_jump:       sdid = SDID_JUMP;       break;
+        case _pp_button_special:    sdid = SDID_SPECIAL;    break;
+        case _pp_button_start:      sdid = SDID_START;      break;
+        default:                    sdid = SDID_SCREENSHOT; break;
+        }
+
+        ScriptVariant_ChangeType(*pretvar, VT_STR);
+        (*pretvar)->strVal = StrCache_CreateNewFrom(control_getkeyname(savedata.keys[index][sdid]));
         break;
     }
     case _pp_colourmap:

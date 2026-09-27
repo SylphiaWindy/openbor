@@ -104,6 +104,7 @@ void set_default_joystick_keynames(int i);
 void reset_joystick_map(int i);
 char* get_joystick_name(const char* name);
 char *control_getkeyname(unsigned int keycode);
+char *control_getdevicename(int player);
 void control_update(s_playercontrols ** playercontrols, int numplayers);
 void control_rumble(int port, int ratio, int msec);
 int keyboard_getlastkey();
