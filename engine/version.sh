@@ -27,7 +27,11 @@ fi
 }
 
 function get_revnum {
-  if test -d "../.git" || test -d ".git"; then
+  # .git is a directory in a plain checkout and a file in a linked worktree,
+  # so test for either. Getting this wrong drops into the branch below,
+  # which prompts for a build number -- and a non-interactive build reads
+  # nothing, leaving the engine reporting build 0.
+  if git rev-parse --git-dir >/dev/null 2>&1; then
     VERSION_BUILD=`git rev-list --count HEAD`
     # get commit hash, 7 chars in length is enough, and still work when supply as URL on github.com
     VERSION_COMMIT=`git rev-parse HEAD | cut -c -7`

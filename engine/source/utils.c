@@ -405,6 +405,11 @@ void getPakName(char *name, int type)
         strcat(mod, ".inp");
         break;
     case 4:
+        // The 3.0 and 4.0 lines write .v3.cfg and .v4.cfg so they can share
+        // a directory. This engine's layout is a third one -- vsync where 3.0
+        // has fpslimit as well -- and the name the LNS release writes is the
+        // plain one, so keep it; the length check on load keeps the release's
+        // own file from being read as ours.
         strcat(mod, ".cfg");
         break;
     default:
