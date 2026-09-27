@@ -2677,6 +2677,17 @@ void loadsettings()
     {
         return;
     }
+    // The file is this struct written out verbatim, so a length that is not
+    // exactly ours came from a build whose layout differs, and reading it
+    // would put keys[] and everything after it at the wrong offset. The LNS
+    // release's engine writes 352 bytes to the same name; ours is 320.
+    fseek(handle, 0, SEEK_END);
+    if(ftell(handle) != (long)sizeof(savedata))
+    {
+        fclose(handle);
+        return;
+    }
+    fseek(handle, 0, SEEK_SET);
     fread(&savedata, 1, sizeof(savedata), handle);
     fclose(handle);
     if(savedata.compatibleversion != COMPATIBLEVERSION)
@@ -2701,6 +2712,17 @@ void loadfromdefault()
     {
         return;
     }
+    // The file is this struct written out verbatim, so a length that is not
+    // exactly ours came from a build whose layout differs, and reading it
+    // would put keys[] and everything after it at the wrong offset. The LNS
+    // release's engine writes 352 bytes to the same name; ours is 320.
+    fseek(handle, 0, SEEK_END);
+    if(ftell(handle) != (long)sizeof(savedata))
+    {
+        fclose(handle);
+        return;
+    }
+    fseek(handle, 0, SEEK_SET);
     fread(&savedata, 1, sizeof(savedata), handle);
     fclose(handle);
     if(savedata.compatibleversion != COMPATIBLEVERSION)
