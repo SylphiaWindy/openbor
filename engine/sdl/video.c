@@ -180,9 +180,16 @@ int video_set_mode(s_videomodes videomodes)
 	if(savedata.usegl && video_gl_set_mode(videomodes)) return 1;
 	else opengl = 0;
 
+#ifdef __SWITCH__
+	// Same as video_gl_set_mode(): the screen is the window. With the
+	// renderer at 1280x720, the logical size video_stretch() sets is what
+	// keeps the aspect ratio when stretch is off.
+	if(!SetVideoMode(nativeWidth, nativeHeight, videomodes.pixel * 8, false))
+#else
 	if(!SetVideoMode(videomodes.hRes * videomodes.hScale,
 	                 videomodes.vRes * videomodes.vScale,
 	                 videomodes.pixel * 8, false))
+#endif
 	{
 		return 0;
 	}

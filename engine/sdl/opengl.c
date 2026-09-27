@@ -209,9 +209,19 @@ int video_gl_set_mode(s_videomodes videomodes)
 	displayWidth = textureWidth = videomodes.hRes;
 	displayHeight = textureHeight = videomodes.vRes;
 
+#ifdef __SWITCH__
+	// There is no window to size here: whatever is asked for is scaled onto
+	// the 1280x720 screen. A viewport shaped like the texture then always
+	// fills it, and the aspect-ratio choice in render() has nothing to work
+	// with -- every setting came out stretched. Use the screen itself, as
+	// fullscreen does elsewhere.
+	viewportWidth = nativeWidth;
+	viewportHeight = nativeHeight;
+#else
 	// use the current monitor resolution in fullscreen mode to prevent aspect ratio distortion
 	viewportWidth = savedata.fullscreen ? nativeWidth : (int)(videomodes.hRes * MAX(0.25,videomodes.hScale));
 	viewportHeight = savedata.fullscreen ? nativeHeight : (int)(videomodes.vRes * MAX(0.25,videomodes.vScale));
+#endif
 
 	// zero width/height means close the window, not make it enormous!
 	if((viewportWidth == 0) || (viewportHeight == 0)) return 0;
