@@ -82,9 +82,12 @@ jobs:
 
       - name: Build
         run: |
+          # MinSizeRel: -Os. Release is -O3 and buys nothing on this hardware
+          # that the smaller binary does not; the local build-switch.sh keeps
+          # Release, with -g, for debugging against the ELF.
           cmake -S . -B build.switch \
             -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/cmake/Switch.cmake" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=MinSizeRel
           cmake --build build.switch -j"$(nproc)"
 
       # One table row per branch for the release notes, written next to the

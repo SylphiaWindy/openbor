@@ -136,8 +136,13 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_COMPILER_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_COMPILER_FLAGS}")
 set(CMAKE_C_FLAGS_DEBUG "-g -O0")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-set(CMAKE_C_FLAGS_RELEASE "-Werror -O3 -DNDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE "-Werror -O3 -DNDEBUG")
+# Release keeps debug info: it never reaches the NRO, which carries only the
+# loadable segments, and it is what a crash log or gdb over nxlink is read
+# against. MinSizeRel is what the release workflow builds.
+set(CMAKE_C_FLAGS_RELEASE "-g -Werror -O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-g -Werror -O3 -DNDEBUG")
+set(CMAKE_C_FLAGS_MINSIZEREL "-Werror -Os -DNDEBUG")
+set(CMAKE_CXX_FLAGS_MINSIZEREL "-Werror -Os -DNDEBUG")
 
 # Default Includes
 target_include_directories(${PROJECT_NAME} PRIVATE 
