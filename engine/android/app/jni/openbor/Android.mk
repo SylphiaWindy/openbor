@@ -52,7 +52,10 @@ include $(PREBUILT_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE    := openbor
-LOCAL_CFLAGS    := -g -O2 -Wall -Werror -Wno-unused-result -fsigned-char -fno-ident -freorder-blocks
+# -Os, and sections the linker can discard: the Switch release builds moved
+# to -Os too, and on a phone the smaller download is worth more than -O2.
+LOCAL_CFLAGS    := -g -Os -ffunction-sections -fdata-sections -Wall -Werror -Wno-unused-result -fsigned-char -fno-ident -freorder-blocks
+LOCAL_LDFLAGS   := -Wl,--gc-sections
 LOCAL_CFLAGS    += -DLINUX -DSDL=1 -DANDROID=1 -DTREMOR=1 -DWEBM=1
 LOCAL_CPPFLAGS  := ${LOCAL_CFLAGS}
 

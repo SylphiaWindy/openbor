@@ -15,3 +15,11 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+
+# Native code reaches these by name: libSDL2.so calls into org.libsdl.app
+# (SDLActivity, SDLAudioManager, SDLControllerManager, the HID classes) via
+# FindClass/GetStaticMethodID, and jniutils.cpp calls GameActivity.jni_vibrate.
+# R8 cannot see any of that, so keep them whole, names and members.
+-keep class org.libsdl.app.** { *; }
+-keep class org.openbor.engine.** { *; }
+-keepclasseswithmembers class * { native <methods>; }

@@ -66,11 +66,23 @@ android {
     }
   }
 
+  // One APK per ABI, plus the universal one for anyone who does not know
+  // which to pick. A phone needs only its own; the universal carries both.
+  splits {
+    abi {
+      enable true
+      reset()
+      include 'arm64-v8a', 'armeabi-v7a'
+      universalApk true
+    }
+  }
+
   buildTypes {
-  
+
   android.applicationVariants.all { variant ->
-    variant.outputs.all {
-        outputFileName = "OpenBOR2018.apk";
+    variant.outputs.all { output ->
+        def abi = output.filters.find { it.filterType == "ABI" }?.identifier ?: "universal"
+        outputFileName = "OpenBOR2018-${variant.buildType.name}-${abi}.apk"
 		}
 	}
      debug {
@@ -78,8 +90,11 @@ android {
         // It should inherit the default debug signing or you define 'signingConfig signingConfigs.debug'
     }
     release {
-      minifyEnabled false
-        proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+      // R8 removes what nothing references; proguard-rules.pro keeps the
+      // classes native code reaches by name (SDL's Java side, ours).
+      minifyEnabled true
+      shrinkResources true
+        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         signingConfig signingConfigs.release
     }
   }
@@ -109,8 +124,6 @@ android {
 
 dependencies {
   implementation fileTree(include: ['*.jar'], dir: 'libs')
-  implementation 'androidx.appcompat:appcompat:1.0.2'
-  implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.0"))
   //needed to fix sdk 34+ crashing
   implementation 'org.jetbrains:annotations:16.0.2'
 }
