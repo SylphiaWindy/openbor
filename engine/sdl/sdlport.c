@@ -121,27 +121,21 @@ int main(int argc, char *argv[])
 	packfile_mode(0);
 
 #ifdef ANDROID
-    if(strstr(SDL_AndroidGetExternalStoragePath(), "org.openbor.engine"))
-    {
-        strcpy(rootDir, "/mnt/sdcard/OpenBOR/");
-        strcpy(paksDir, "/mnt/sdcard/OpenBOR/Paks");
-        strcpy(savesDir, "/mnt/sdcard/OpenBOR/Saves");
-        strcpy(logsDir, "/mnt/sdcard/OpenBOR/Logs");
-        strcpy(screenShotsDir, "/mnt/sdcard/OpenBOR/ScreenShots");
-    }
-    else
-    {
-        strcpy(rootDir, SDL_AndroidGetExternalStoragePath());
-        strcat(rootDir, "/");
-        strcpy(paksDir, SDL_AndroidGetExternalStoragePath());
-        strcat(paksDir, "/Paks");
-        strcpy(savesDir, SDL_AndroidGetExternalStoragePath());
-        strcat(savesDir, "/Saves");
-        strcpy(logsDir, SDL_AndroidGetExternalStoragePath());
-        strcat(logsDir, "/Logs");
-        strcpy(screenShotsDir, SDL_AndroidGetExternalStoragePath());
-        strcat(screenShotsDir, "/ScreenShots");
-    }
+    // Everything lives under the app's own external files directory,
+    // Android/data/<app id>/files. The old build special-cased the stock
+    // app id onto /mnt/sdcard/OpenBOR/, which scoped storage has made
+    // unwritable: dirExists() failed there and the engine quit before it
+    // could even open a log. 4.0 dropped that branch; so does this.
+    strcpy(rootDir, SDL_AndroidGetExternalStoragePath());
+    strcat(rootDir, "/");
+    strcpy(paksDir, SDL_AndroidGetExternalStoragePath());
+    strcat(paksDir, "/Paks");
+    strcpy(savesDir, SDL_AndroidGetExternalStoragePath());
+    strcat(savesDir, "/Saves");
+    strcpy(logsDir, SDL_AndroidGetExternalStoragePath());
+    strcat(logsDir, "/Logs");
+    strcpy(screenShotsDir, SDL_AndroidGetExternalStoragePath());
+    strcat(screenShotsDir, "/ScreenShots");
 	dirExists(rootDir, 1);
     chdir(rootDir);
 #endif
