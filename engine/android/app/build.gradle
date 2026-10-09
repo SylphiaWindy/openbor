@@ -5,11 +5,13 @@ apply plugin: 'com.android.application'
 // grow for Android to accept an update, and a later commit always has more
 // commits behind it, so an APK from a later commit always installs over an
 // earlier one. Falls back to 1 / "3.0" when git is not reachable.
+// It is read from engine/version.h, which engine/version.sh writes from git
+// (build-android.sh runs it first); that keeps this file free of any git
+// plumbing and in step with the string the engine prints into its log.
 def gitBuild = { ->
     try {
-        def p = ["git", "rev-list", "--count", "HEAD"].execute(null, project.rootDir)
-        p.waitFor()
-        p.exitValue() == 0 ? p.text.trim().toInteger() : 0
+        def m = (file("${project.rootDir}/../version.h").text =~ /VERSION_BUILD\s+"(\d+)"/)
+        m.find() ? m.group(1).toInteger() : 0
     } catch (ignored) {
         0
     }
@@ -49,18 +51,19 @@ android {
     }
     
     release {
-      // only try to find keystore.properties when it's release build
-      /*
-        def keystorePropertiesFile = rootProject.file("keystore.properties")
+      // keystore.properties sits next to settings.gradle and is gitignored;
+      // without it a release build comes out unsigned, which is what you want
+      // on a machine that has no business signing.
+      def keystorePropertiesFile = rootProject.file("keystore.properties")
+      if (keystorePropertiesFile.exists()) {
         def keystoreProperties = new Properties()
         keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-
         keyAlias keystoreProperties['keyAlias']
         keyPassword keystoreProperties['keyPassword']
         storeFile file(keystoreProperties['storeFile'])
         storePassword keystoreProperties['storePassword']
-        */
-    } 
+      }
+    }
   }
 
   buildTypes {
