@@ -55,8 +55,15 @@ LOCAL_MODULE    := openbor
 # -Os, and sections the linker can discard: the Switch release builds moved
 # to -Os too, and on a phone the smaller download is worth more than -O2.
 LOCAL_CFLAGS    := -g -Os -ffunction-sections -fdata-sections -Wall -Werror -Wno-unused-result -fsigned-char -fno-ident -freorder-blocks
-LOCAL_LDFLAGS   := -Wl,--gc-sections
+LOCAL_LDFLAGS   := -Wl,--gc-sections -Wl,--strip-all
 LOCAL_CFLAGS    += -DLINUX -DSDL=1 -DANDROID=1 -DTREMOR=1 -DWEBM=1
+# __FILE__ reaches the binary through the allocation-failure messages and
+# asserts, and ndk-build compiles every file by its absolute path, so the
+# .so carried the build tree's layout. NDK 21's clang 9 predates
+# -fmacro-prefix-map but has __FILE_NAME__, the basename; make __FILE__ mean
+# that. The redefinition of a builtin is a warning clang would otherwise
+# promote under -Werror.
+LOCAL_CFLAGS    += -D__FILE__=__FILE_NAME__ -Wno-builtin-macro-redefined
 LOCAL_CPPFLAGS  := ${LOCAL_CFLAGS}
 
 LOCAL_C_INCLUDES  :=  \
