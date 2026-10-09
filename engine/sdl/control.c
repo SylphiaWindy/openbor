@@ -11,6 +11,9 @@
 #include "video.h"
 #include "globals.h"
 #include "control.h"
+#ifdef ANDROID
+#include "jniutils.h"
+#endif
 #include "stristr.h"
 #include "sblaster.h"
 #include "joysticks.h"
@@ -82,6 +85,14 @@ void getPads(Uint8* keystate, Uint8* keystate_def)
 						touch_info.px[i] = ev.tfinger.x*nativeWidth;
 						touch_info.py[i] = ev.tfinger.y*nativeHeight;
 						touch_info.pstatus[i] = TOUCH_STATUS_DOWN;
+
+						// The Java side used to poll C for this; the current
+						// SDLActivity does not, so ask it to buzz from here.
+						if(is_touchpad_vibration_enabled() &&
+						   is_touch_area(touch_info.px[i], touch_info.py[i]))
+						{
+							jniutils_vibrate_device();
+						}
 						break;
 					}
 				}
